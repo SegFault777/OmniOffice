@@ -1,0 +1,37 @@
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest,  target: linux,   bin: omnidoc}
+          - {os: windows-latest, target: windows, bin: omnidoc.exe}
+          - {os: macos-latest,   target: macos,   bin: omnidoc}   # experimental
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.target == 'macos' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (freestanding, no libc)
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = windows ]; then
+            gcc -std=gnu11 -Os -Wall -Wextra -ffreestanding -fno-builtin -fno-stack-protector \
+              -fno-asynchronous-unwind-tables -fno-tree-loop-distribute-patterns \
+              -nostdlib -mconsole -Wl,-e,mainCRTStartup -o omnidoc.exe \
+              src/main.c src/zip.c src/mem.c src/plat_win.c -lkernel32
+          else
+            make ${{ matrix.target }}
+          fi
+      - name: Self-test
+        shell: bash
+        run: sh tests/selftest.sh ./${{ matrix.bin }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omnidoc-${{ matrix.target }}
+          path: ${{ matrix.bin }}
