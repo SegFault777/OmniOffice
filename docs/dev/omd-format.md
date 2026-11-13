@@ -1,12 +1,8 @@
-# OMD format, version 1
+# OMD format, version 2
 
-An OMD file is a ZIP archive whose entries are **stored** (uncompressed) so that it can be read
-and written without a compressor.
+ZIP container, entries stored (uncompressed): `mimetype` (`application/vnd.omnioffice.omd+zip`, first),
+`manifest.json` (`{"omd":2,...}`), `content.md`.
 
-| Entry | Content |
-|---|---|
-| `mimetype` | `application/vnd.omnioffice.omd+zip` (first entry) |
-| `manifest.json` | `{"omd":1,"generator":"OmniDoc <version>"}` |
-| `content.md` | UTF-8 document text (Markdown-compatible) |
-
-Readers must ignore unknown entries. Future versions will add `styles.json` and `media/`.
+`content.md` is Markdown-compatible, one paragraph per line: `#`/`##`/`###` headings, `%` title, `>` quote,
+4-space indent code, `**bold**`, `*italic*`, `<u>underline</u>`, and an optional alignment prefix
+(`{c}` center, `{r}` right, `{j}` justify). Backslash escapes `\` and `*`. Version 1 files (no prefixes) still load.

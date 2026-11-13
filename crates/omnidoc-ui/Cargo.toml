@@ -1,0 +1,18 @@
+[package]
+name = "omnidoc-ui"
+description = "OmniDoc desktop UI: OS-native window (winit), Skia rendering, native file dialogs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "omnidoc"
+path = "src/main.rs"
+
+[dependencies]
+omnidoc-core = { path = "../omnidoc-core" }
+winit = "0.29"
+softbuffer = "0.4"
+rfd = "0.14"
+skia-safe = { version = "0.75", features = ["textlayout"] }
+arboard = "3"

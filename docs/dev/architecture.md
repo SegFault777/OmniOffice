@@ -1,13 +1,14 @@
-# Architecture
+# Architecture (0.2)
 
-- `src/main.c`: editor core (static gap-less buffer, undo log, UTF-8, soft wrap, VT100 UI),
-  format table, importers (XML text extraction) and exporters (OMD, DOCX).
-- `src/zip.c`: ZIP reader with a built-in inflate, and a stored-only ZIP writer.
-- `src/mem.c`: `memcpy/memmove/memset/memcmp` (required by the compiler in freestanding mode).
-- `src/plat_posix.c`: Linux x86_64 and macOS raw syscalls, termios via ioctl, `_start` entry.
-- `src/plat_win.c`: Windows x64 via `kernel32` only, VT input/output console modes.
-- `src/omni.h`: the platform interface (`p_*`) and the ZIP API.
+`omnidoc-core` owns all document logic and has one dependency (`miniz_oxide`, for inflate).
 
-Rules: no libc, no heap, no dynamic allocation. Buffers: `B` (document, 4 MiB), `X`/`Z`
-(16 MiB scratch each, `.bss`). Every code path must check capacities. SPDX header in every file.
-The terminal UI uses only ANSI/VT sequences, which keeps the UI code identical on all platforms.
+- `model.rs`: `Doc > Para(style, align) > Run(text, bold, italic, underline)`.
+- `edit.rs`: `Editor` with cursor/selection, typing coalescing, snapshot undo/redo, formatting,
+  find/replace (case-insensitive option, formatting-preserving), outline for the navigation pane.
+- `cmd.rs`: one registry of commands (id, title, tab, group, shortcut). The ribbon, shortcuts and the
+  command palette are all generated from it; `cmd::exec` runs editing commands, the UI handles file/view ones.
+- `formats.rs`, `xml.rs`, `zipio.rs`: readers/writers, a small XML tokenizer, ZIP read/write.
+
+`omnidoc-ui` renders one frame per event on a CPU Skia surface and presents it through `softbuffer`
+(no GL/Vulkan setup, identical on Windows/Linux/macOS). Text layout uses Skia `textlayout` (system font
+fallback, so Hangul/CJK work). Korean IME composition is displayed inline via winit `Ime` events.

@@ -1,15 +1,11 @@
 # Getting started
 
-OmniDoc is a terminal application (a UTF-8 capable terminal is required; Windows Terminal or
-a recent conhost on Windows).
+Run `omnidoc [file]`. Type to edit; Korean/Japanese/Chinese IME input is supported.
 
-1. Run `omnidoc notes.md` (the file is created on first save if it does not exist).
-2. Type. Lines are soft-wrapped; CJK characters are treated as double width.
-3. `^S` saves in the format given by the file extension. Read-only formats are saved as `.omd`.
-4. `^F` searches, `^Z` undoes, `^Q` quits (press twice with unsaved changes).
+- Ribbon tabs: File, Home, View. `Ctrl+F1` collapses the ribbon.
+- `Ctrl+Shift+P`: command palette (every command, fuzzy search).
+- `Ctrl+F`: find bar (Enter next, Ctrl+Enter replace all, Tab switches field, Esc closes).
+- `Ctrl+B/I/U`, `Ctrl+Alt+1..3` headings, `Ctrl+Z/Y` undo/redo, `Ctrl+X/C/V` clipboard (Cmd on macOS).
+- `F9` navigation pane, `F11` focus mode, `Ctrl+Shift+D` dark mode, `Ctrl+=` / `Ctrl+-` zoom.
 
-The top bar shows the Word-style tabs (File, Home, Insert, View) as placeholders for the upcoming
-ribbon; the bottom bar shows line, column and word count.
-
-Limits: documents up to 4 MiB; no formatting is preserved when converting between formats.
-Headless conversion: `omnidoc --convert in.docx out.md`.
+Known limits: one continuous page (no pagination yet), no images or tables, no spell check.

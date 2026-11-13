@@ -1,0 +1,9 @@
+[package]
+name = "omnidoc-core"
+description = "OmniDoc document model, editing engine, command registry and format converters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+miniz_oxide = "0.7"

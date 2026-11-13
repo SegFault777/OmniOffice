@@ -1,11 +1,10 @@
 # Building
 
-Requirements: GCC or Clang, `make`. Nothing else (no libc headers are used).
+Requirements: a recent stable Rust toolchain (the Skia and winit dependency tree needs a current
+cargo; Cargo 1.75 cannot resolve it). Core only: any Rust that supports edition 2021.
 
-- Linux: `make linux` (x86_64 only).
-- Windows: MinGW-w64 gcc, `make windows` (or see `.github/workflows/build.yml`).
-- macOS: `make macos`. Experimental: Apple does not support binaries without libSystem, and
-  this target has not been verified on real hardware.
+    cargo test -p omnidoc-core          # fast, no system libraries
+    cargo build --release -p omnidoc-ui # downloads prebuilt Skia binaries on first build
 
-Flags that matter: `-ffreestanding -fno-builtin -fno-tree-loop-distribute-patterns -nostdlib`.
-Run `sh tests/selftest.sh ./omnidoc` after every change.
+Linux: `libfontconfig1-dev libfreetype6-dev libgtk-3-dev libxkbcommon-dev`. Windows/macOS: nothing extra.
+CI: `.github/workflows/build.yml` runs core tests, then builds the UI on all three systems.
