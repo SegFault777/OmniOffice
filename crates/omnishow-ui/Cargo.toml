@@ -13,4 +13,4 @@ omni-shell = { path = "../omni-shell" }
 omnishow-core = { path = "../omnishow-core" }
 omnidoc-core = { path = "../omnidoc-core" }
 omni-common = { path = "../omni-common" }
-rfd = "0.14"
+rfd = "0.15"

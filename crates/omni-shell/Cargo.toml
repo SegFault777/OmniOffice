@@ -6,6 +6,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-winit = "0.29"
+winit = "0.30"
 softbuffer = "0.4"
 skia-safe = { version = "0.75", features = ["textlayout"] }

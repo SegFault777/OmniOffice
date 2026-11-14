@@ -8,6 +8,7 @@ release within that week. If a build is finished in a later week, it takes that 
 | 202646a | 0.2.0 | Rust + Skia rewrite, OmniDoc only |
 | 202646b | 0.3.0 (roadmap alpha-3) | OmniCel, OmniShow, launcher, 12 OmniDoc features, DOC import |
 | 202646c | 0.3.1 | Google Material Symbols icons in all apps |
+| 202646d | 0.3.2 | macOS CI fix: winit 0.30, rfd 0.15 (drops objc2 0.4.1), pinned CI toolchain |
 
 The id is the constant `BUILD_ID` in `crates/omni-common/src/lib.rs`, shown in window titles and `.omd/.omc/.oms`
 manifests. Cargo needs semver, so each build id also has a fixed crate version (table above); `Cargo.toml` and `BUILD_ID` must be bumped together.

@@ -8,7 +8,7 @@ use omni_common::config;
 use omni_shell::icon;
 use std::{num::NonZeroU32, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 use winit::{
-    dpi::{LogicalPosition, LogicalSize}, event::*, event_loop::{ControlFlow, EventLoop}, keyboard::{Key, ModifiersState, NamedKey}, window::{Window, WindowBuilder},
+    dpi::{LogicalPosition, LogicalSize}, event::*, event_loop::{ControlFlow, EventLoop}, keyboard::{Key, ModifiersState, NamedKey}, window::Window,
 };
 
 struct Theme { bg: u32, paper: u32, ink: u32, bar: u32, bar2: u32, accent: u32, line: u32 }
@@ -346,7 +346,8 @@ impl App {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let el = EventLoop::new()?;
-    let window = Arc::new(WindowBuilder::new().with_title("OmniDoc").with_inner_size(LogicalSize::new(1280., 820.)).build(&el)?);
+    #[allow(deprecated)]
+    let window = Arc::new(el.create_window(Window::default_attributes().with_title("OmniDoc").with_inner_size(LogicalSize::new(1280., 820.)))?);
     window.set_ime_allowed(true); // Korean/Japanese/Chinese input
     let ctx = softbuffer::Context::new(window.clone())?;
     let mut sb = softbuffer::Surface::new(&ctx, window.clone())?;
@@ -358,6 +359,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().nth(1).is_none() {
         if let Ok(b) = std::fs::read(config::autosave_path("omnidoc", "omd")) { if let Ok(d) = formats::load("omd", &b) { app.ed = Editor::new(d); app.ed.dirty = true; app.toast = "Recovered unsaved work (autosave)".into(); } }
     }
+    #[allow(deprecated)]
     el.run(move |event, elwt| {
         elwt.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_secs(30)));
         app.autosave();

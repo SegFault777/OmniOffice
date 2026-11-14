@@ -7,7 +7,7 @@ pub use skia_safe::{Canvas, Rect};
 pub use winit::{event::KeyEvent, keyboard::{Key, ModifiersState, NamedKey}};
 use skia_safe::{surfaces, textlayout::*, Color, Font, FontMgr, FontStyle, Paint, PaintStyle};
 use std::{num::NonZeroU32, sync::Arc, time::{Duration, Instant}};
-use winit::{dpi::LogicalSize, event::*, event_loop::{ControlFlow, EventLoop}, window::WindowBuilder};
+use winit::{dpi::LogicalSize, event::*, event_loop::{ControlFlow, EventLoop}, window::Window};
 
 const FAMS: &[&str] = &["Noto Sans CJK KR", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", "Helvetica Neue", "Arial", "Noto Sans", "sans-serif"];
 thread_local! { static FC: FontCollection = { let mut f = FontCollection::new(); f.set_default_font_manager(FontMgr::default(), None); f }; }
@@ -47,10 +47,12 @@ pub trait App {
 }
 pub fn run(mut app: impl App + 'static, title: &str) -> Result<(), Box<dyn std::error::Error>> {
     let el = EventLoop::new()?;
-    let win = Arc::new(WindowBuilder::new().with_title(title).with_inner_size(LogicalSize::new(1180., 760.)).build(&el)?);
+    #[allow(deprecated)]
+    let win = Arc::new(el.create_window(Window::default_attributes().with_title(title).with_inner_size(LogicalSize::new(1180., 760.)))?);
     win.set_ime_allowed(true);
     let ctx = softbuffer::Context::new(win.clone())?; let mut sb = softbuffer::Surface::new(&ctx, win.clone())?;
     let (mut mods, mut mouse) = (ModifiersState::empty(), (0f32, 0f32));
+    #[allow(deprecated)]
     el.run(move |ev, elwt| {
         elwt.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_secs(30))); app.tick();
         let Event::WindowEvent { event, .. } = ev else { return };
