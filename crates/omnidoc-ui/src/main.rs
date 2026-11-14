@@ -5,6 +5,7 @@
 use omnidoc_core::{cmd, edit::Editor, formats, model::*};
 use skia_safe::{surfaces, textlayout::*, Color, Font, FontMgr, FontStyle, Paint, Rect};
 use omni_common::config;
+use omni_shell::icon;
 use std::{num::NonZeroU32, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 use winit::{
     dpi::{LogicalPosition, LogicalSize}, event::*, event_loop::{ControlFlow, EventLoop}, keyboard::{Key, ModifiersState, NamedKey}, window::{Window, WindowBuilder},
@@ -237,7 +238,7 @@ impl App {
         // ---- navigation pane (headings) ----
         if nav_w > 0. {
             let r = Rect::new(0., top, nav_w, h - status_h); let mut p = Paint::default(); p.set_color(col(t.bar2)); c.draw_rect(r, &p);
-            text(c, &fb, "Navigation  -  Headings", 12., top + 20., t.ink);
+            icon(c, "nav_pane", 10., top + 5., 20., t.ink); text(c, &fb, "Navigation  -  Headings", 36., top + 20., t.ink);
             for (k, (lvl, i, title)) in self.ed.outline().into_iter().enumerate().take(60) {
                 let rr = Rect::new(4., top + 32. + k as f32 * 24., nav_w - 4., top + 54. + k as f32 * 24.);
                 if inside(&rr, self.mouse) { rrect(c, rr, 4., t.bar); }
@@ -255,7 +256,7 @@ impl App {
         let mut p = Paint::default(); p.set_color(col(t.accent)); c.draw_rect(Rect::new(0., 0., w, 36.), &p);
         let name = self.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled").to_string();
         text(c, &fb, &format!("OmniDoc  |  {}  {}", name, if self.ed.dirty { "- Unsaved" } else { "- Saved" }), 12., 23., 0xFFFFFF);
-        let sb = Rect::new(w / 2. - 180., 6., w / 2. + 180., 30.); rrect(c, sb, 12., 0xFFFFFF); text(c, &f, "Search commands  (Ctrl+Shift+P)", sb.left + 14., 23., 0x555B66); self.hot.push((sb, "palette.open".into()));
+        let sb = Rect::new(w / 2. - 180., 6., w / 2. + 180., 30.); rrect(c, sb, 12., 0xFFFFFF); icon(c, "search", sb.left + 12., 9., 18., 0x555B66); text(c, &f, "Search commands  (Ctrl+Shift+P)", sb.left + 38., 23., 0x555B66); self.hot.push((sb, "palette.open".into()));
         // ---- tabs ----
         let mut p = Paint::default(); p.set_color(col(t.bar)); c.draw_rect(Rect::new(0., 36., w, 36. + 28. + if self.ribbon { 84. } else { 0. }), &p);
         let mut x = 10.;
@@ -277,11 +278,17 @@ impl App {
                 if cm.group != group { end_group(c, group, gstart, x - 6.); group = cm.group; x += 10.; gstart = x; }
                 let big = match cm.id { "style.h1" => 17., "style.h2" => 15., "style.title" => 18., _ => 12.5 };
                 let bf = self.ui_font(big, matches!(cm.id, "fmt.bold" | "style.h1" | "style.h2" | "style.title"));
-                let bw = (bf.measure_str(cm.title, None).0 + 22.).max(46.); let r = Rect::new(x, ry + 6., x + bw, ry + 62.);
+                let ic = cmd::icon(cm.id); let lf = self.ui_font(11.5, false);
+                let bw = if ic.is_empty() { (bf.measure_str(cm.title, None).0 + 22.).max(46.) } else { (lf.measure_str(cm.title, None).0 + 16.).max(52.) }; let r = Rect::new(x, ry + 6., x + bw, ry + 62.);
                 let on = (cm.id == "fmt.bold" && fa) || (cm.id == "fmt.italic" && fi) || (cm.id == "fmt.underline" && fu) || (cm.id == "view.dark" && self.dark) || (cm.id == "view.outline" && self.nav) || (cm.id == "fmt.painter" && self.ed.painter.is_some()) || (cm.id == "view.marks" && self.marks) || (cm.id == "tools.autocorrect" && self.ed.autocorrect_on) || (cm.id == "tools.complete" && self.ed.completion_on);
                 if on || inside(&r, self.mouse) { rrect(c, r, 6., if on { t.line } else { t.bar2 }); }
-                text(c, &bf, cm.title, x + (bw - bf.measure_str(cm.title, None).0) / 2., ry + 30., t.ink);
-                if !cm.keys.is_empty() { let kf = self.ui_font(9.5, false); let kw = kf.measure_str(cm.keys, None).0; text(c, &kf, cm.keys, x + (bw - kw) / 2., ry + 52., 0x8A9099); }
+                if ic.is_empty() {
+                    text(c, &bf, cm.title, x + (bw - bf.measure_str(cm.title, None).0) / 2., ry + 30., t.ink);
+                    if !cm.keys.is_empty() { let kf = self.ui_font(9.5, false); let kw = kf.measure_str(cm.keys, None).0; text(c, &kf, cm.keys, x + (bw - kw) / 2., ry + 52., 0x8A9099); }
+                } else {
+                    icon(c, ic, x + (bw - 26.) / 2., ry + 9., 26., if on { t.accent } else { t.ink });
+                    text(c, &lf, cm.title, x + (bw - lf.measure_str(cm.title, None).0) / 2., ry + 52., t.ink);
+                }
                 self.hot.push((r, cm.id.into())); x += bw + 4.;
             }
             if self.tab == "File" {
@@ -289,7 +296,7 @@ impl App {
                 for (i, p) in self.recent.iter().take(6).enumerate() {
                     let nm = std::path::Path::new(p).file_name().and_then(|n| n.to_str()).unwrap_or(p); let nm: String = nm.chars().take(18).collect();
                     let bw = (f.measure_str(&nm, None).0 + 22.).max(46.); let r = Rect::new(x, ry + 6., x + bw, ry + 62.);
-                    if inside(&r, self.mouse) { rrect(c, r, 6., t.bar2); } text(c, &f, &nm, x + 11., ry + 38., t.ink); self.hot.push((r, format!("recent:{i}"))); x += bw + 4.;
+                    if inside(&r, self.mouse) { rrect(c, r, 6., t.bar2); } icon(c, "doc", x + (bw - 26.) / 2., ry + 9., 26., t.ink); text(c, &f, &nm, x + 11., ry + 52., t.ink); self.hot.push((r, format!("recent:{i}"))); x += bw + 4.;
                 }
             }
             end_group(c, group, gstart, x); self.ribbon_w = x + self.ribbon_scroll;
@@ -298,19 +305,19 @@ impl App {
         let mut p = Paint::default(); p.set_color(col(t.bar)); c.draw_rect(Rect::new(0., h - status_h, w, h), &p);
         let fmt = self.path.as_ref().and_then(|p| p.extension()).and_then(|e| e.to_str()).unwrap_or("omd").to_uppercase();
         text(c, &f, &format!("Words: {}    {}    {}", self.ed.doc.words(), fmt, self.toast), 10., h - 8., t.ink);
-        for (lab, id, dx) in [("-", "view.zoomout", 110.), ("+", "view.zoomin", 24.)] { let r = Rect::new(w - dx - 40., h - 22., w - dx - 16., h - 2.); text(c, &fb, lab, r.left + 8., h - 7., t.ink); self.hot.push((r, id.into())); }
+        for (lab, id, dx) in [("-", "view.zoomout", 110.), ("+", "view.zoomin", 24.)] { let r = Rect::new(w - dx - 40., h - 22., w - dx - 16., h - 2.); let _ = lab; icon(c, if id == "view.zoomin" { "zoom_in" } else { "zoom_out" }, r.left + 1., r.top + 1., 22., t.ink); self.hot.push((r, id.into())); }
         text(c, &f, &format!("{}%", (self.zoom * 100.) as i32), w - 90., h - 8., t.ink);
         // ---- context menu ----
         if let Some((mx, my)) = self.ctx {
             let items = cmd::context_menu(self.ed.range().is_some());
-            let hgt: f32 = items.iter().map(|i| if *i == "-" { 9. } else { 26. }).sum::<f32>() + 8.; let (px, py) = (mx.min(w - 230.), my.min(h - hgt - 4.));
-            rrect(c, Rect::new(px - 1., py - 1., px + 221., py + hgt + 1.), 8., t.line); rrect(c, Rect::new(px, py, px + 220., py + hgt), 7., t.bar2);
+            let hgt: f32 = items.iter().map(|i| if *i == "-" { 9. } else { 26. }).sum::<f32>() + 8.; let (px, py) = (mx.min(w - 260.), my.min(h - hgt - 4.));
+            rrect(c, Rect::new(px - 1., py - 1., px + 251., py + hgt + 1.), 8., t.line); rrect(c, Rect::new(px, py, px + 250., py + hgt), 7., t.bar2);
             let mut y = py + 4.;
             for id in items {
-                if id == "-" { let mut p = Paint::default(); p.set_color(col(t.line)); c.draw_rect(Rect::new(px + 8., y + 4., px + 212., y + 5.), &p); y += 9.; continue; }
-                let cm = cmd::COMMANDS.iter().find(|c| c.id == id); let rr = Rect::new(px + 4., y, px + 216., y + 26.);
+                if id == "-" { let mut p = Paint::default(); p.set_color(col(t.line)); c.draw_rect(Rect::new(px + 8., y + 4., px + 242., y + 5.), &p); y += 9.; continue; }
+                let cm = cmd::COMMANDS.iter().find(|c| c.id == id); let rr = Rect::new(px + 4., y, px + 246., y + 26.);
                 if inside(&rr, self.mouse) { rrect(c, rr, 5., t.accent); }
-                let hi = inside(&rr, self.mouse); if let Some(cm) = cm { text(c, &f, cm.title, px + 14., y + 18., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.keys, px + 120., y + 18., if hi { 0xFFFFFF } else { 0x8A9099 }); }
+                let hi = inside(&rr, self.mouse); if let Some(cm) = cm { icon(c, cmd::icon(id), px + 12., y + 4., 18., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.title, px + 38., y + 18., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.keys, px + 150., y + 18., if hi { 0xFFFFFF } else { 0x8A9099 }); }
                 self.hot.push((rr, format!("ctx:{id}"))); y += 26.;
             }
         }
@@ -331,7 +338,7 @@ impl App {
             text(c, &fb, &format!("> {q}"), x0 + 16., 98., t.ink);
             for (k, cm) in res.iter().take(9).enumerate() {
                 let y0 = 118. + k as f32 * 30.; if k == sel.min(n.saturating_sub(1)) { rrect(c, Rect::new(x0 + 6., y0, x0 + pw - 6., y0 + 28.), 6., t.accent); }
-                let hi = k == sel.min(n.saturating_sub(1)); text(c, &f, cm.title, x0 + 18., y0 + 19., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.keys, x0 + pw - 140., y0 + 19., if hi { 0xFFFFFF } else { 0x8A9099 });
+                let hi = k == sel.min(n.saturating_sub(1)); icon(c, cmd::icon(cm.id), x0 + 16., y0 + 5., 18., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.title, x0 + 44., y0 + 19., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.keys, x0 + pw - 140., y0 + 19., if hi { 0xFFFFFF } else { 0x8A9099 });
             }
         }
     }
@@ -394,4 +401,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     })?;
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test] fn every_command_icon_exists() { for c in cmd::COMMANDS { let i = cmd::icon(c.id); assert!(i.is_empty() || omni_shell::has_icon(i), "{} -> {i}", c.id); } }
 }

@@ -60,3 +60,20 @@ pub fn context_menu(has_selection: bool) -> Vec<&'static str> {
     if has_selection { vec!["edit.cut", "edit.copy", "edit.paste", "-", "fmt.bold", "fmt.italic", "fmt.underline", "-", "case.upper", "case.lower", "case.title", "-", "fmt.painter", "edit.selectall"] }
     else { vec!["edit.paste", "edit.selectall", "-", "style.h1", "style.h2", "style.normal", "-", "fmt.painter", "find.open"] }
 }
+
+/// Material Symbols icon name for a command ("" = no icon, e.g. style gallery entries drawn as text previews).
+pub fn icon(id: &str) -> &'static str {
+    match id {
+        "file.new" => "note_add", "file.open" => "folder_open", "file.save" => "save", "file.saveas" => "save_as",
+        "edit.undo" => "undo", "edit.redo" => "redo", "edit.cut" => "content_cut", "edit.copy" => "content_copy", "edit.paste" => "content_paste",
+        "fmt.painter" => "format_paint", "fmt.bold" => "format_bold", "fmt.italic" => "format_italic", "fmt.underline" => "format_underlined",
+        "align.left" => "format_align_left", "align.center" => "format_align_center", "align.right" => "format_align_right", "align.justify" => "format_align_justify",
+        "style.quote" => "format_quote", "style.code" => "code",
+        "case.upper" => "uppercase", "case.lower" => "lowercase", "case.title" => "title_case", "case.sentence" => "sentence_case",
+        "edit.sort" => "sort_az", "edit.sortdesc" => "sort_za", "view.marks" => "paragraph", "tools.stats" => "stats",
+        "tools.autocorrect" => "autocorrect", "tools.complete" => "complete", "find.regex" => "regex", "find.open" => "find",
+        "edit.selectall" => "select_all", "view.outline" => "nav_pane", "view.focus" => "focus", "view.dark" => "dark",
+        "view.zoomin" => "zoom_in", "view.zoomout" => "zoom_out", "view.ribbon" => "collapse", "palette.open" => "search",
+        _ => "",
+    }
+}

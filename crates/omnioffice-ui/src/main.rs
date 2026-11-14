@@ -4,9 +4,9 @@ use omni_shell::*;
 use std::process::Command;
 
 const APPS: [(&str, &str, &str, u32, &str); 3] = [
-    ("OmniDoc", "omnidoc", "D", 0x2B579A, "Word processor and markup editor  .omd .docx .odt .rtf .doc .md ..."),
-    ("OmniCel", "omnicel", "C", 0x1D6F42, "Spreadsheet with formulas  .omc .csv"),
-    ("OmniShow", "omnishow", "S", 0xC55A11, "Presentations and slideshows  .oms .md"),
+    ("OmniDoc", "omnidoc", "doc", 0x2B579A, "Word processor and markup editor  .omd .docx .odt .rtf .doc .md ..."),
+    ("OmniCel", "omnicel", "sheet", 0x1D6F42, "Spreadsheet with formulas  .omc .csv"),
+    ("OmniShow", "omnishow", "slides", 0xC55A11, "Presentations and slideshows  .oms .md"),
 ];
 struct Launcher { mouse: (f32, f32), toast: String, cards: Vec<Rect>, quit: bool }
 fn launch(bin: &str, arg: Option<&str>) -> Result<(), String> {
@@ -27,7 +27,7 @@ impl App for Launcher {
         for (i, (name, _, letter, color, desc)) in APPS.iter().enumerate() {
             let r = Rect::new(50. + i as f32 * (cw + 20.), 160., 50. + i as f32 * (cw + 20.) + cw, 420.); let hov = inside(&r, self.mouse);
             rrect(c, r.with_outset((if hov { 3. } else { 0. }, if hov { 3. } else { 0. })), 14., if hov { *color } else { 0xDDE0E6 }); rrect(c, r, 12., 0xFFFFFF);
-            rrect(c, Rect::new(r.left + 24., r.top + 24., r.left + 104., r.top + 104.), 16., *color); text(c, letter, r.left + 24. + (80. - measure(letter, 44., true)) / 2., r.top + 82., 44., true, 0xFFFFFF);
+            rrect(c, Rect::new(r.left + 24., r.top + 24., r.left + 104., r.top + 104.), 16., *color); icon(c, letter, r.left + 24. + 16., r.top + 24. + 16., 48., 0xFFFFFF);
             text(c, name, r.left + 24., r.top + 150., 24., true, 0x222222); text(c, &format!("{}", i + 1), r.right - 34., r.top + 40., 18., true, 0x999999);
             let mut y = r.top + 182.; let mut line = String::new(); for word in desc.split(' ') { if measure(&format!("{line} {word}"), 13., false) > cw - 48. { text(c, &line, r.left + 24., y, 13., false, 0x555555); y += 20.; line.clear(); } if !line.is_empty() { line.push(' '); } line.push_str(word); } text(c, &line, r.left + 24., y, 13., false, 0x555555);
             self.cards.push(r);

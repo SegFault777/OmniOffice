@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! Window shell shared by OmniCel, OmniShow and the launcher: winit window, CPU Skia surface, softbuffer present.
+mod icons;
+mod icons_data;
+pub use icons::{has_icon, icon};
 pub use skia_safe::{Canvas, Rect};
 pub use winit::{event::KeyEvent, keyboard::{Key, ModifiersState, NamedKey}};
 use skia_safe::{surfaces, textlayout::*, Color, Font, FontMgr, FontStyle, Paint, PaintStyle};

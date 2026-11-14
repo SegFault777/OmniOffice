@@ -1666,14 +1666,14 @@ dependencies = [
 
 [[package]]
 name = "omni-common"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "miniz_oxide 0.8.9",
 ]
 
 [[package]]
 name = "omni-shell"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "skia-safe",
  "softbuffer",
@@ -1682,14 +1682,14 @@ dependencies = [
 
 [[package]]
 name = "omnicel-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "omni-common",
 ]
 
 [[package]]
 name = "omnicel-ui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "omni-common",
  "omni-shell",
@@ -1699,7 +1699,7 @@ dependencies = [
 
 [[package]]
 name = "omnidoc-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "omni-common",
  "regex",
@@ -1707,10 +1707,11 @@ dependencies = [
 
 [[package]]
 name = "omnidoc-ui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arboard",
  "omni-common",
+ "omni-shell",
  "omnidoc-core",
  "rfd",
  "skia-safe",
@@ -1720,7 +1721,7 @@ dependencies = [
 
 [[package]]
 name = "omnioffice-ui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "omni-common",
  "omni-shell",
@@ -1728,14 +1729,14 @@ dependencies = [
 
 [[package]]
 name = "omnishow-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "omni-common",
 ]
 
 [[package]]
 name = "omnishow-ui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "omni-common",
  "omni-shell",

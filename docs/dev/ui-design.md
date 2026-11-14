@@ -24,3 +24,6 @@ Right-click context menu (Word, LibreOffice), recent files in the File tab (Word
 (LibreOffice Writer), find bar regex toggle (VS Code, LibreOffice), statistics dialog (LibreOffice Word Count).
 OmniCel follows Excel/Hancom Cell (formula bar, name box, header-highlighted selection); OmniShow follows PowerPoint
 (slide sorter, notes pane, F5 slideshow). Each app has its own accent colour: OmniDoc blue, OmniCel green, OmniShow orange.
+
+## Icons (202646c)
+Google Material Symbols Outlined (weight 400): one consistent family across Doc/Cel/Show, drawn as Skia paths so they scale with DPI and take the theme colour (accent when a toggle is on). Ribbon buttons follow Word: icon over label; shortcuts moved to menus/palette to reduce clutter.

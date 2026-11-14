@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Field { Title, Bullet(usize), Notes }
-struct Show { deck: Deck, path: Option<PathBuf>, cur: usize, focus: Field, present: bool, dirty: bool, toast: String, hot: Vec<(Rect, Field)>, thumbs: Vec<Rect>, size: (f32, f32), quit: bool }
+struct Show { deck: Deck, path: Option<PathBuf>, cur: usize, focus: Field, present: bool, dirty: bool, toast: String, hot: Vec<(Rect, Field)>, thumbs: Vec<Rect>, size: (f32, f32), quit: bool, ic: Vec<(Rect, &'static str, &'static str)>, hover: (f32, f32) }
 fn pop(s: &mut String) { s.pop(); }
 impl Show {
     fn field(&mut self) -> &mut String {
@@ -25,6 +25,14 @@ impl Show {
         let Some(p) = self.path.clone() else { return };
         let b = if p.extension().map_or(false, |e| e == "md") { self.deck.to_markdown().into_bytes() } else { self.deck.to_oms() };
         match std::fs::write(&p, b) { Ok(()) => { self.dirty = false; self.toast = "Saved".into(); let mut r = config::recent_load("omnishow"); config::recent_push(&mut r, &p.to_string_lossy(), 8); config::recent_save("omnishow", &r); } Err(e) => self.toast = e.to_string() }
+    }
+    fn act(&mut self, id: &str) {
+        match id {
+            "new" => { self.deck.slides.insert(self.cur + 1, Slide::default()); self.cur += 1; self.focus = Field::Title; self.dirty = true; }
+            "dup" => { let s = self.deck.slides[self.cur].clone(); self.deck.slides.insert(self.cur + 1, s); self.cur += 1; self.dirty = true; }
+            "del" => if self.deck.slides.len() > 1 { self.deck.slides.remove(self.cur); self.cur = self.cur.min(self.deck.slides.len() - 1); self.dirty = true; },
+            "import" => self.import_outline(), "present" => self.present = true, "open" => self.open(), _ => self.save(),
+        }
     }
     /// Import the heading outline of any document OmniDoc can read (Ctrl+I).
     fn import_outline(&mut self) {
@@ -55,7 +63,12 @@ impl App for Show {
         if self.present { fill(c, Rect::new(0., 0., w, h), 0x000000); let (sw, sh) = if w / h > 16. / 9. { (h * 16. / 9., h) } else { (w, w * 9. / 16.) }; self.slide(c, &self.deck.slides[self.cur].clone(), Rect::new((w - sw) / 2., (h - sh) / 2., (w + sw) / 2., (h + sh) / 2.), false); return; }
         fill(c, Rect::new(0., 0., w, h), 0xE9ECF1); fill(c, Rect::new(0., 0., w, 36.), 0xC55A11);
         text(c, &format!("OmniShow  |  {}{}", self.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled"), if self.dirty { "  - Unsaved" } else { "" }), 12., 23., 13., true, 0xFFFFFF);
-        text(c, "Ctrl+M new  Ctrl+D duplicate  Ctrl+Del delete  Ctrl+I import outline  Ctrl+O/S  F5 present", w - 640., 23., 12., false, 0xFBE3D3);
+        self.ic.clear(); let mut hov = "";
+        for (i, (id, ic, tip)) in [("new", "add_slide", "New slide (Ctrl+M)"), ("dup", "content_copy", "Duplicate (Ctrl+D)"), ("del", "delete", "Delete (Ctrl+Del)"), ("import", "import", "Import outline (Ctrl+I)"), ("present", "play", "Present (F5)"), ("open", "folder_open", "Open (Ctrl+O)"), ("save", "save", "Save (Ctrl+S)")].into_iter().enumerate() {
+            let r = Rect::new(400. + i as f32 * 36., 5., 400. + i as f32 * 36. + 30., 31.); if inside(&r, self.hover) { rrect(c, r, 6., 0xD9702E); hov = tip; }
+            icon(c, ic, r.left + 3., r.top + 1., 24., 0xFFFFFF); self.ic.push((r, id, tip));
+        }
+        text(c, hov, 660., 23., 12., false, 0xFBE3D3);
         fill(c, Rect::new(0., 36., 210., h), 0xF6F7F9); self.thumbs.clear();
         for (i, s) in self.deck.slides.iter().enumerate() { let r = Rect::new(18., 50. + i as f32 * 118., 192., 50. + i as f32 * 118. + 99.); if r.bottom > h { break; }
             self.slide(c, s, r, false); text(c, &(i + 1).to_string(), 4., r.top + 14., 12., true, 0x555555); if i == self.cur { stroke(c, r.with_outset((3., 3.)), 0xC55A11, 3.); } self.thumbs.push(r); }
@@ -67,7 +80,7 @@ impl App for Show {
         let nr = Rect::new(230., h - 140., w - 20., h - 10.); fill(c, nr, 0xFFFFFF); stroke(c, nr, if self.focus == Field::Notes { 0xC55A11 } else { 0xC9CED6 }, if self.focus == Field::Notes { 2. } else { 1. });
         text(c, "Speaker notes", nr.left + 10., nr.top + 20., 12., true, 0x888888);
         for (i, l) in format!("{}{}", s.notes, if self.focus == Field::Notes { "|" } else { "" }).lines().enumerate().take(5) { text(c, l, nr.left + 10., nr.top + 44. + i as f32 * 20., 13., false, 0x222222); }
-        self.hot.push((nr, Field::Notes)); text(c, &format!("Slide {} of {}   {}", self.cur + 1, self.deck.slides.len(), self.toast), 220., 26., 12., false, 0xFFFFFF);
+        self.hot.push((nr, Field::Notes)); text(c, &format!("Slide {} of {}   {}", self.cur + 1, self.deck.slides.len(), self.toast), 250., 23., 12., false, 0xFFFFFF);
     }
     fn key(&mut self, e: &KeyEvent, m: ModifiersState) {
         self.toast.clear();
@@ -102,14 +115,16 @@ impl App for Show {
         }
     }
     fn text(&mut self, s: &str) { if !self.present { self.field().push_str(s); self.dirty = true; } }
+    fn moved(&mut self, x: f32, y: f32) { self.hover = (x, y); }
     fn mouse(&mut self, x: f32, y: f32, _r: bool) {
+        if !self.present { if let Some(id) = self.ic.iter().find(|h| inside(&h.0, (x, y))).map(|h| h.1) { self.act(id); return; } }
         if self.present { self.cur = (self.cur + 1).min(self.deck.slides.len() - 1); return; }
         if let Some(i) = self.thumbs.iter().position(|r| inside(r, (x, y))) { self.cur = i; return; }
         if let Some((_, f)) = self.hot.iter().find(|(r, _)| inside(r, (x, y))).cloned() { self.focus = f; }
     }
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut s = Show { deck: Deck::default(), path: None, cur: 0, focus: Field::Title, present: false, dirty: false, toast: String::new(), hot: vec![], thumbs: vec![], size: (1180., 760.), quit: false };
+    let mut s = Show { deck: Deck::default(), path: None, cur: 0, focus: Field::Title, present: false, dirty: false, toast: String::new(), hot: vec![], thumbs: vec![], size: (1180., 760.), quit: false, ic: vec![], hover: (0., 0.) };
     if let Some(p) = std::env::args().nth(1) { let p = PathBuf::from(p); let d = std::fs::read(&p).unwrap_or_default(); let r = if p.extension().map_or(false, |e| e == "oms") { Deck::from_oms(&d) } else { Ok(Deck::from_markdown(&String::from_utf8_lossy(&d))) }; if let Ok(d) = r { s.deck = d; s.path = Some(p); } }
     run(s, "OmniShow")
 }

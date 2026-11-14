@@ -1,6 +1,6 @@
 # OmniOffice
 
-**OmniOffice 202646b** is a small cross-platform office suite written in Rust. OS-native windows, clipboard,
+**OmniOffice 202646c** (crate version 0.3.1) is a small cross-platform office suite written in Rust. OS-native windows, clipboard,
 file dialogs and IME input; everything is drawn with Skia. License: GPL-3.0-only.
 
 | Application | Purpose | Native format | Binary |
@@ -10,9 +10,8 @@ file dialogs and IME input; everything is drawn with Skia. License: GPL-3.0-only
 | OmniCel | spreadsheet (Excel, Hancom Cell) | `.omc` | `omnicel` |
 | OmniShow | presentations (PowerPoint, Hancom Show) | `.oms` | `omnishow` |
 
-Versions are named `<year><ISO week><letter>`: `202646a` (= the former 0.2.0) was the first build of week 46 of 2026,
-`202646b` is the second. Cargo packages use the placeholder `0.3.0`; the build id lives in `omni-common`.
-See `docs/project/versioning.md`.
+Versions are named `<year><ISO week><letter>` and each maps to a crate version (202646a = 0.2.0, 202646b = 0.3.0, 202646c = 0.3.1).
+See `docs/project/versioning.md`. Icons: Google Material Symbols (Apache-2.0), see `THIRD_PARTY.md`.
 
 ## Workspace
 
