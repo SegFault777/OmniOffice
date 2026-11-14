@@ -1,14 +1,16 @@
 # Roadmap
 
-## 0.2.0 (current)
-Done and unit-tested in core: redo, find/replace, styles (title, headings, quote, code, alignment), outline,
-command palette registry, RTF read/write, ODT read/write, DOCX styles, OMD v2, clipboard commands.
-Written but **not yet compiled or run** (needs a current Rust toolchain): the Skia UI crate.
+## 202646a (done)
+Rust + Skia OmniDoc: styles, navigation pane, command palette, find/replace, redo, RTF/ODT/DOCX/OMD.
 
-## Not done yet
-- HWP v5 import (OLE2 compound file + zlib records), DOC import (OLE2 Word binary), HWPX export.
-- PDF text import, PAGES/WPD/WPS/LWP/WRI/CWK/UOF, GUL/JUNG (no public specification found).
-- Pagination, images, tables, spell check, a screen-reader (accessibility) bridge, mouse double/triple click.
+## 202646b (this build)
+- OmniCel (`.omc`, `.csv`), OmniShow (`.oms`, `.md` outline), OmniOffice launcher.
+- DOC (Word 97-2003) import via a new OLE2 reader.
+- 12 OmniDoc features, see `docs/user/features-202646b.md`.
 
-## 0.3
-Compile/test the UI on all three systems, pagination, images, tables, HWP/DOC import.
+## Next
+- Compile and test on Windows and macOS (CI builds them; only Linux was run during development).
+- OmniDoc: HWP v5 import (the OLE2 reader is ready), HWPX export, PDF import, pagination, images, tables, spell check.
+- OmniCel/OmniShow: more formats (XLSX, PPTX, HCELL/SHOW) only after OmniDoc's format list is complete, as planned.
+- OmniCel: copy/paste, undo, charts, cell formatting. OmniShow: shapes, images, themes, transitions, PPTX export.
+- Accessibility (screen reader) bridge, mouse selection polish, rendering cache for large documents.

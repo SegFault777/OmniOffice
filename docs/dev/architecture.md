@@ -1,14 +1,11 @@
-# Architecture (0.2)
+# Architecture (202646b)
 
-`omnidoc-core` owns all document logic and has one dependency (`miniz_oxide`, for inflate).
+Cores contain all logic and are unit-tested; UI crates only draw and forward input.
 
-- `model.rs`: `Doc > Para(style, align) > Run(text, bold, italic, underline)`.
-- `edit.rs`: `Editor` with cursor/selection, typing coalescing, snapshot undo/redo, formatting,
-  find/replace (case-insensitive option, formatting-preserving), outline for the navigation pane.
-- `cmd.rs`: one registry of commands (id, title, tab, group, shortcut). The ribbon, shortcuts and the
-  command palette are all generated from it; `cmd::exec` runs editing commands, the UI handles file/view ones.
-- `formats.rs`, `xml.rs`, `zipio.rs`: readers/writers, a small XML tokenizer, ZIP read/write.
-
-`omnidoc-ui` renders one frame per event on a CPU Skia surface and presents it through `softbuffer`
-(no GL/Vulkan setup, identical on Windows/Linux/macOS). Text layout uses Skia `textlayout` (system font
-fallback, so Hangul/CJK work). Korean IME composition is displayed inline via winit `Ime` events.
+- `omni-common`: `zipio` (read stored/deflate, write stored), `xml` tokenizer, `cfb` (OLE2 reader), `config`.
+- `omnidoc-core`: `model`, `edit` (Editor: selection, undo/redo, formatting, painter, case, sort, autocorrect,
+  completion, regex find/replace, stats, outline), `cmd` (command registry + context menu), `formats`.
+- `omnicel-core`: sparse sheet, recursive-descent formula evaluator with cycle detection, CSV, OMC.
+- `omnishow-core`: deck/slide model, markdown (de)serialization, outline import, OMS.
+- `omni-shell`: `App` trait + event loop (winit, softbuffer, CPU Skia surface) and text helpers with CJK font fallback.
+- `omnidoc-ui` has its own event loop (IME pre-edit, autosave timer); the other three use `omni-shell`.

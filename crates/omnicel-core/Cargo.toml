@@ -1,0 +1,9 @@
+[package]
+name = "omnicel-core"
+description = "OmniCel spreadsheet engine: sheet model, formulas, CSV and OMC format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+omni-common = { path = "../omni-common" }

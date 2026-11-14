@@ -5,31 +5,35 @@ on:
   pull_request:
   workflow_dispatch:
 jobs:
-  core:
-    name: core tests
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test -p omnidoc-core
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype6-dev libgtk-3-dev libxkbcommon-dev
+      - run: cargo test --workspace
   app:
-    needs: core
+    needs: test
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest,  target: linux,   bin: target/release/omnidoc}
-          - {os: windows-latest, target: windows, bin: target/release/omnidoc.exe}
-          - {os: macos-latest,   target: macos,   bin: target/release/omnidoc}
+          - {os: ubuntu-latest,  target: linux,   ext: ""}
+          - {os: windows-latest, target: windows, ext: ".exe"}
+          - {os: macos-latest,   target: macos,   ext: ""}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Linux system libraries (fonts, native file dialogs)
+      - name: Linux system libraries
         if: matrix.target == 'linux'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype6-dev libgtk-3-dev libxkbcommon-dev
-      - run: cargo build --release -p omnidoc-ui
+      - run: cargo build --release --workspace
       - uses: actions/upload-artifact@v4
         with:
-          name: omnidoc-${{ matrix.target }}
-          path: ${{ matrix.bin }}
+          name: omnioffice-${{ matrix.target }}
+          path: |
+            target/release/omnioffice${{ matrix.ext }}
+            target/release/omnidoc${{ matrix.ext }}
+            target/release/omnicel${{ matrix.ext }}
+            target/release/omnishow${{ matrix.ext }}

@@ -5,6 +5,5 @@ pub mod cmd;
 pub mod edit;
 pub mod formats;
 pub mod model;
-pub mod xml;
-pub mod zipio;
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub use omni_common::{cfb, xml, zipio};
+pub use omni_common::BUILD_ID as VERSION;

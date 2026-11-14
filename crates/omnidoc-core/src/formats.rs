@@ -15,7 +15,7 @@ pub const FORMATS: &[(&str, &str, bool, bool)] = &[
     ("rtf", "Rich Text Format", true, true), ("docx", "Word", true, true), ("odt", "OpenDocument Text", true, true),
     ("docm", "Word (macro)", true, false), ("sxw", "OpenOffice 1.x", true, false), ("hwpx", "Hancom OWPML", true, false),
     ("hml", "Hancom Markup", true, false), ("abw", "AbiWord", true, false),
-    ("hwp", "Hancom HWP", false, false), ("doc", "Word 97-2003", false, false), ("pdf", "PDF", false, false),
+    ("hwp", "Hancom HWP", false, false), ("doc", "Word 97-2003", true, false), ("pdf", "PDF", false, false),
     ("pages", "Apple Pages", false, false), ("wpd", "WordPerfect", false, false), ("wps", "MS Works/WPS", false, false),
     ("lwp", "Lotus Word Pro", false, false), ("wri", "Windows Write", false, false), ("cwk", "ClarisWorks", false, false),
     ("uof", "UOF", false, false), ("gul", "JungUm GUL", false, false), ("jung", "JungUm", false, false),
@@ -31,6 +31,7 @@ pub fn load(ext: &str, d: &[u8]) -> Result<Doc, String> {
         "omd" => { let c = zipio::read(d, "content.md")?.ok_or("OMD: content.md missing")?; Ok(read_md(&String::from_utf8_lossy(&c), true)) }
         "rtf" => Ok(read_rtf(d)),
         "docx" | "docm" => read_docx(d),
+        "doc" => read_doc(d),
         "odt" | "sxw" => read_odf(d),
         "hwpx" => {
             let mut all = vec![];
@@ -167,6 +168,36 @@ fn write_rtf(d: &Doc) -> String {
         o.push_str("}\\par\n");
     }
     o + "}"
+}
+
+// ---------- DOC (Word 97-2003 binary: OLE2 + FIB + piece table) ----------
+fn read_doc(d: &[u8]) -> Result<Doc, String> {
+    let c = crate::cfb::Cfb::open(d)?;
+    let wd = c.stream("WordDocument").ok_or("DOC: no WordDocument stream")?;
+    let u16 = |b: &[u8], o: usize| b.get(o..o + 2).map_or(0, |x| x[0] as usize | (x[1] as usize) << 8);
+    let u32 = |b: &[u8], o: usize| b.get(o..o + 4).map_or(0, |x| u32::from_le_bytes([x[0], x[1], x[2], x[3]]) as usize);
+    if u16(&wd, 0) != 0xA5EC { return Err("DOC: not a Word 97+ file".into()); }
+    let flags = u16(&wd, 0x0A);
+    if flags & 0x100 != 0 { return Err("DOC: encrypted documents are not supported".into()); }
+    let tbl = c.stream(if flags & 0x200 != 0 { "1Table" } else { "0Table" }).ok_or("DOC: table stream missing")?;
+    let (fc, lcb, ccp) = (u32(&wd, 0x1A2), u32(&wd, 0x1A6), u32(&wd, 0x4C));
+    let clx = tbl.get(fc..fc + lcb).ok_or("DOC: bad CLX")?;
+    let mut i = 0; while clx.get(i) == Some(&1) { i += 3 + u16(clx, i + 1); }
+    if clx.get(i) != Some(&2) { return Err("DOC: piece table missing".into()); }
+    let plc = clx.get(i + 5..i + 5 + u32(clx, i + 1)).ok_or("DOC: bad piece table")?;
+    let n = (plc.len().saturating_sub(4)) / 12; let mut text = String::new();
+    for k in 0..n {
+        let (cp0, cp1) = (u32(plc, k * 4), u32(plc, (k + 1) * 4)); if cp0 >= ccp { break; } let cp1 = cp1.min(ccp);
+        let fcv = u32(plc, 4 * (n + 1) + k * 8 + 2);
+        if fcv & 0x4000_0000 != 0 { let o = (fcv & 0x3FFF_FFFF) / 2; text.extend(wd.get(o..o + (cp1 - cp0)).ok_or("DOC: bad text range")?.iter().map(|&b| b as char)); }
+        else { let o = fcv; let u: Vec<u16> = (0..cp1 - cp0).map(|j| u16(&wd, o + 2 * j) as u16).collect(); text.extend(char::decode_utf16(u).map(|r| r.unwrap_or('?'))); }
+    }
+    let (mut paras, mut cur, mut instr) = (vec![], String::new(), false);
+    for ch in text.chars() { match ch {
+        '\r' => paras.push(Para::plain(&std::mem::take(&mut cur))), '\u{13}' => instr = true, '\u{14}' | '\u{15}' => instr = false,
+        '\u{7}' | '\u{b}' | '\t' => if !instr { cur.push(' ') }, c if c < ' ' => {}, c => if !instr { cur.push(c) } } }
+    if !cur.is_empty() || paras.is_empty() { paras.push(Para::plain(&cur)); }
+    Ok(Doc { paras })
 }
 
 // ---------- DOCX ----------

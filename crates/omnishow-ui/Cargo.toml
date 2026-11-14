@@ -1,0 +1,16 @@
+[package]
+name = "omnishow-ui"
+description = "OmniShow presentation application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "omnishow"
+path = "src/main.rs"
+[dependencies]
+omni-shell = { path = "../omni-shell" }
+omnishow-core = { path = "../omnishow-core" }
+omnidoc-core = { path = "../omnidoc-core" }
+omni-common = { path = "../omni-common" }
+rfd = "0.14"

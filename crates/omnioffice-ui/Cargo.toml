@@ -1,0 +1,13 @@
+[package]
+name = "omnioffice-ui"
+description = "OmniOffice launcher: choose OmniDoc, OmniCel or OmniShow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "omnioffice"
+path = "src/main.rs"
+[dependencies]
+omni-shell = { path = "../omni-shell" }
+omni-common = { path = "../omni-common" }

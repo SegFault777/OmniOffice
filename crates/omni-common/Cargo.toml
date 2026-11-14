@@ -1,0 +1,9 @@
+[package]
+name = "omni-common"
+description = "Shared OmniOffice code: ZIP, XML, OLE2 compound files, user config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+miniz_oxide = "0.8"

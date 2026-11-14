@@ -1,0 +1,15 @@
+[package]
+name = "omnicel-ui"
+description = "OmniCel spreadsheet application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "omnicel"
+path = "src/main.rs"
+[dependencies]
+omni-shell = { path = "../omni-shell" }
+omnicel-core = { path = "../omnicel-core" }
+omni-common = { path = "../omni-common" }
+rfd = "0.14"

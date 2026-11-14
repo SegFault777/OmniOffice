@@ -18,3 +18,9 @@ Word's ribbon suits intermediate users, WPS copies it most faithfully, and Libre
 | Dark theme | all modern suites | Ctrl+Shift+D |
 
 Avoided: OnlyOffice's weak contrast and hidden style access, LibreOffice's dated icon density, cluttered default toolbars.
+
+## 202646b additions
+Right-click context menu (Word, LibreOffice), recent files in the File tab (Word backstage), ghost-text word completion
+(LibreOffice Writer), find bar regex toggle (VS Code, LibreOffice), statistics dialog (LibreOffice Word Count).
+OmniCel follows Excel/Hancom Cell (formula bar, name box, header-highlighted selection); OmniShow follows PowerPoint
+(slide sorter, notes pane, F5 slideshow). Each app has its own accent colour: OmniDoc blue, OmniCel green, OmniShow orange.
