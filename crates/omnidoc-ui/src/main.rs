@@ -219,6 +219,10 @@ impl App {
         c.save(); c.clip_rect(Rect::new(nav_w, top, w, h - status_h), None, false);
         let page = Rect::new(self.page_x, top + 16. - self.scroll, self.page_x + page_w, top + 16. - self.scroll + total + 60.);
         rrect(c, page.with_outset((1., 1.)), 2., t.line); rrect(c, page, 2., t.paper);
+        // page guides: A4 content height at 96 dpi (1123 px minus 72 px margins top and bottom)
+        let ph = 979. * self.zoom; let pages = (((total - 80.) / ph).ceil() as i32).max(1);
+        for k in 1..pages { let yy = top + 16. - self.scroll + 40. + k as f32 * ph; if yy > top && yy < h {
+            let mut p = Paint::default(); p.set_color(col(t.line)); c.draw_rect(Rect::new(self.page_x, yy - 1., self.page_x + page_w, yy + 1.), &p); text(c, &f, &format!("Page {}", k + 1), self.page_x + page_w - 70., yy - 5., 0x8A9099); } }
         let (ox, oy) = (self.page_x + 72. * self.zoom, top - self.scroll + 40.);
         if let Some((a, b)) = self.ed.range() {
             for i in a.0..=b.0 {
@@ -304,7 +308,7 @@ impl App {
         // ---- status bar ----
         let mut p = Paint::default(); p.set_color(col(t.bar)); c.draw_rect(Rect::new(0., h - status_h, w, h), &p);
         let fmt = self.path.as_ref().and_then(|p| p.extension()).and_then(|e| e.to_str()).unwrap_or("omd").to_uppercase();
-        text(c, &f, &format!("Words: {}    {}    {}", self.ed.doc.words(), fmt, self.toast), 10., h - 8., t.ink);
+        text(c, &f, &format!("Page {} of {}    Words: {}    {}    {}", ((cy / ph).floor() as i32 + 1).min(pages), pages, self.ed.doc.words(), fmt, self.toast), 10., h - 8., t.ink);
         for (lab, id, dx) in [("-", "view.zoomout", 110.), ("+", "view.zoomin", 24.)] { let r = Rect::new(w - dx - 40., h - 22., w - dx - 16., h - 2.); let _ = lab; icon(c, if id == "view.zoomin" { "zoom_in" } else { "zoom_out" }, r.left + 1., r.top + 1., 22., t.ink); self.hot.push((r, id.into())); }
         text(c, &f, &format!("{}%", (self.zoom * 100.) as i32), w - 90., h - 8., t.ink);
         // ---- context menu ----

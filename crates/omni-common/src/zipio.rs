@@ -52,3 +52,10 @@ impl Writer {
         self.buf
     }
 }
+
+/// Inflate a raw deflate stream (used by HWP section streams).
+pub fn inflate_raw(d: &[u8]) -> Result<Vec<u8>, String> { miniz_oxide::inflate::decompress_to_vec(d).map_err(|_| "inflate failed".to_string()) }
+#[cfg(test)]
+mod tests { use super::*;
+    #[test] fn raw_deflate_roundtrip() { let src: Vec<u8> = (0..5000u32).map(|i| (i * 7 % 251) as u8).collect(); let z = miniz_oxide::deflate::compress_to_vec(&src, 6); assert_eq!(inflate_raw(&z).unwrap(), src); }
+}

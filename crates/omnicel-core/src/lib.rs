@@ -52,6 +52,21 @@ impl Sheet {
         if !f.is_empty() || !row.is_empty() { row.push(f); for v in row { sh.set(r, c, &v); c += 1; } }
         sh
     }
+    /// Raw cell contents of a rectangular range as tab-separated text (rows end with \n).
+    pub fn range_tsv(&self, r1: u32, c1: u32, r2: u32, c2: u32) -> String {
+        let (ra, rb, ca, cb) = (r1.min(r2), r1.max(r2), c1.min(c2), c1.max(c2)); let mut o = String::new();
+        for r in ra..=rb { for c in ca..=cb { if c > ca { o.push('\t'); } o.push_str(self.raw(r, c).replace(['\t', '\n'], " ").as_str()); } o.push('\n'); }
+        o
+    }
+    /// Paste tab-separated text with its top-left corner at (r, c). Returns (rows, columns) written.
+    pub fn paste_tsv(&mut self, r: u32, c: u32, s: &str) -> (u32, u32) {
+        let (mut rows, mut cols) = (0u32, 0u32);
+        for (i, line) in s.replace("\r\n", "\n").trim_end_matches('\n').split('\n').enumerate() {
+            for (j, v) in line.split('\t').enumerate() { self.set(r + i as u32, c + j as u32, v); cols = cols.max(j as u32 + 1); } rows = i as u32 + 1;
+        }
+        (rows, cols)
+    }
+    pub fn clear_range(&mut self, r1: u32, c1: u32, r2: u32, c2: u32) { for r in r1.min(r2)..=r1.max(r2) { for c in c1.min(c2)..=c1.max(c2) { self.set(r, c, ""); } } }
     pub fn to_omc(&self) -> Vec<u8> {
         let mut z = zipio::Writer::new(); z.add("mimetype", b"application/vnd.omnioffice.omc+zip");
         z.add("manifest.json", format!("{{\"omc\":1,\"generator\":\"OmniCel {}\"}}", omni_common::BUILD_ID).as_bytes()); z.add("sheet.csv", self.to_csv().as_bytes()); z.finish()
@@ -118,5 +133,6 @@ mod tests { use super::*;
     fn sh() -> Sheet { let mut s = Sheet::default(); for (r, c, v) in [(0, 0, "10"), (1, 0, "20"), (2, 0, "=SUM(A1:A2)*2"), (0, 1, "=A3/(A1-10)"), (1, 1, "=B2"), (2, 1, "=IF(A1<A2,\"yes\",\"no\")"), (0, 2, "he said \"hi\", ok")] { s.set(r, c, v); } s }
     #[test] fn formulas() { let s = sh(); assert_eq!(s.eval(2, 0), Value::Num(60.)); assert_eq!(s.eval(0, 1), Value::Err("#DIV/0!")); assert_eq!(s.eval(1, 1), Value::Err("#CYCLE!")); assert_eq!(s.eval(2, 1), Value::Text("yes".into()));
         let mut t = sh(); t.set(3, 0, "=AVERAGE(A1:A3)+MAX(A1,A2)-ROUND(1.26,1)"); assert_eq!(t.eval(3, 0).show(), "48.7"); assert_eq!(col_name(27), "AB"); assert_eq!(parse_ref("AB3"), Some((2, 27))); }
+    #[test] fn tsv_copy_paste() { let mut s = sh(); let t = s.range_tsv(0, 0, 2, 0); assert_eq!(t, "10\n20\n=SUM(A1:A2)*2\n"); let n = s.paste_tsv(5, 3, "x\ty\n1\t2\n"); assert_eq!(n, (2, 2)); assert_eq!((s.raw(5, 3), s.raw(6, 4)), ("x", "2")); s.clear_range(5, 3, 6, 4); assert_eq!(s.raw(6, 4), ""); }
     #[test] fn files() { let s = sh(); assert_eq!(Sheet::from_csv(&s.to_csv()).to_csv(), s.to_csv()); let back = Sheet::from_omc(&s.to_omc()).unwrap(); assert_eq!(back.raw(0, 2), "he said \"hi\", ok"); assert_eq!(back.eval(2, 0), Value::Num(60.)); }
 }

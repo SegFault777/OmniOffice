@@ -12,3 +12,4 @@ release within that week. If a build is finished in a later week, it takes that 
 
 The id is the constant `BUILD_ID` in `crates/omni-common/src/lib.rs`, shown in window titles and `.omd/.omc/.oms`
 manifests. Cargo needs semver, so each build id also has a fixed crate version (table above); `Cargo.toml` and `BUILD_ID` must be bumped together.
+| 202646e | 0.4.0 | PowerPoint-style OmniShow ribbon, DOCX/DOC compatibility, HWP import, OmniCel clipboard/undo, page guides |

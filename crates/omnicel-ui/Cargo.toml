@@ -13,3 +13,4 @@ omni-shell = { path = "../omni-shell" }
 omnicel-core = { path = "../omnicel-core" }
 omni-common = { path = "../omni-common" }
 rfd = "0.15"
+arboard = "3"

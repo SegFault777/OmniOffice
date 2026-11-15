@@ -15,3 +15,8 @@ Click a cell and type; Enter/Tab/arrows commit and move; `F2` edits; `Del` clear
 `Ctrl+M` new slide, `Ctrl+D` duplicate, `Ctrl+Del` delete, Enter in a bullet adds another, `F5` slideshow, `Ctrl+O/S/I`.
 
 Known limits: OmniDoc is one continuous page, no images/tables; OmniCel has no undo or copy/paste yet; OmniShow has text only.
+
+## OmniShow ribbon (202646e)
+Tabs: File, Home, Insert, Design, Transitions, Slide Show, View. Right-click a ribbon button for "Add to Quick Access Toolbar" / "Collapse the Ribbon";
+the arrow after the quick access toolbar opens the customize list. `F5` starts from the beginning, `Shift+F5` from the current slide.
+Click a shape to select it, drag to move, type to edit its text, `Del` to delete. `Ctrl+Shift+P` or the search box finds any command.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! Window shell shared by OmniCel, OmniShow and the launcher: winit window, CPU Skia surface, softbuffer present.
 mod icons;
+pub mod ribbon;
 mod icons_data;
 pub use icons::{has_icon, icon};
 pub use skia_safe::{Canvas, Rect};
@@ -42,7 +43,10 @@ pub trait App {
     fn mouse(&mut self, _x: f32, _y: f32, _right: bool) {}
     fn moved(&mut self, _x: f32, _y: f32) {}
     fn wheel(&mut self, _dy: f32) {}
+    fn mouse_up(&mut self) {}
     fn tick(&mut self) {}
+    /// Return true while an animation needs more frames.
+    fn animating(&self) -> bool { false }
     fn wants_quit(&self) -> bool { false }
 }
 pub fn run(mut app: impl App + 'static, title: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -64,6 +68,7 @@ pub fn run(mut app: impl App + 'static, title: &str) -> Result<(), Box<dyn std::
             WindowEvent::Ime(Ime::Commit(s)) => { app.text(&s); win.request_redraw() }
             WindowEvent::CursorMoved { position, .. } => { mouse = ((position.x / sf) as f32, (position.y / sf) as f32); app.moved(mouse.0, mouse.1); win.request_redraw() }
             WindowEvent::MouseInput { state: ElementState::Pressed, button, .. } => { app.mouse(mouse.0, mouse.1, button == MouseButton::Right); win.request_redraw() }
+            WindowEvent::MouseInput { state: ElementState::Released, .. } => { app.mouse_up(); win.request_redraw() }
             WindowEvent::MouseWheel { delta, .. } => { app.wheel(match delta { MouseScrollDelta::LineDelta(_, y) => y * 3., MouseScrollDelta::PixelDelta(p) => p.y as f32 / 16. }); win.request_redraw() }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => win.request_redraw(),
             WindowEvent::RedrawRequested => {
@@ -73,10 +78,13 @@ pub fn run(mut app: impl App + 'static, title: &str) -> Result<(), Box<dyn std::
                 let info = surf.image_info(); let mut px = vec![0u8; (w.get() * h.get() * 4) as usize];
                 if !surf.read_pixels(&info, &mut px, (w.get() * 4) as usize, (0, 0)) || sb.resize(w, h).is_err() { return; }
                 if let Ok(mut b) = sb.buffer_mut() { for (i, p) in px.chunks_exact(4).enumerate() { b[i] = u32::from_le_bytes([p[0], p[1], p[2], p[3]]); } let _ = b.present(); }
-                win.set_title(&app.title()); if app.wants_quit() { elwt.exit(); }
+                win.set_title(&app.title()); if app.wants_quit() { elwt.exit(); } if app.animating() { win.request_redraw(); }
             }
             _ => {}
         }
     })?;
     Ok(())
 }
+pub fn oval(c: &Canvas, r: Rect, color: u32) { let mut p = Paint::default(); p.set_anti_alias(true); p.set_color(col(color)); c.draw_oval(r, &p); }
+pub fn line(c: &Canvas, a: (f32, f32), b: (f32, f32), color: u32, width: f32) { let mut p = Paint::default(); p.set_anti_alias(true); p.set_stroke_width(width); p.set_color(col(color)); c.draw_line(a, b, &p); }
+pub fn tint(c: &Canvas, r: Rect, color: u32, alpha: u8) { let mut p = Paint::default(); p.set_color(Color::from_argb(alpha, (color >> 16) as u8, (color >> 8) as u8, color as u8)); c.draw_rect(r, &p); }

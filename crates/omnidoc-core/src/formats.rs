@@ -15,7 +15,7 @@ pub const FORMATS: &[(&str, &str, bool, bool)] = &[
     ("rtf", "Rich Text Format", true, true), ("docx", "Word", true, true), ("odt", "OpenDocument Text", true, true),
     ("docm", "Word (macro)", true, false), ("sxw", "OpenOffice 1.x", true, false), ("hwpx", "Hancom OWPML", true, false),
     ("hml", "Hancom Markup", true, false), ("abw", "AbiWord", true, false),
-    ("hwp", "Hancom HWP", false, false), ("doc", "Word 97-2003", true, false), ("pdf", "PDF", false, false),
+    ("hwp", "Hancom HWP", true, false), ("doc", "Word 97-2003", true, false), ("pdf", "PDF", false, false),
     ("pages", "Apple Pages", false, false), ("wpd", "WordPerfect", false, false), ("wps", "MS Works/WPS", false, false),
     ("lwp", "Lotus Word Pro", false, false), ("wri", "Windows Write", false, false), ("cwk", "ClarisWorks", false, false),
     ("uof", "UOF", false, false), ("gul", "JungUm GUL", false, false), ("jung", "JungUm", false, false),
@@ -30,8 +30,9 @@ pub fn load(ext: &str, d: &[u8]) -> Result<Doc, String> {
         "md" => Ok(read_md(&text(), false)),
         "omd" => { let c = zipio::read(d, "content.md")?.ok_or("OMD: content.md missing")?; Ok(read_md(&String::from_utf8_lossy(&c), true)) }
         "rtf" => Ok(read_rtf(d)),
-        "docx" | "docm" => read_docx(d),
-        "doc" => read_doc(d),
+        "docx" | "docm" => crate::docx::read(d),
+        "doc" => crate::legacy::read_doc(d),
+        "hwp" => crate::legacy::read_hwp(d),
         "odt" | "sxw" => read_odf(d),
         "hwpx" => {
             let mut all = vec![];
@@ -57,7 +58,7 @@ pub fn save(ext: &str, doc: &Doc) -> Result<Vec<u8>, String> {
             Ok(z.finish())
         }
         "rtf" => Ok(write_rtf(doc).into_bytes()),
-        "docx" => Ok(write_docx(doc)),
+        "docx" => Ok(crate::docx::write(doc)),
         "odt" => Ok(write_odt(doc)),
         _ => Err(format!("Saving .{e} is not supported")),
     }
@@ -168,83 +169,6 @@ fn write_rtf(d: &Doc) -> String {
         o.push_str("}\\par\n");
     }
     o + "}"
-}
-
-// ---------- DOC (Word 97-2003 binary: OLE2 + FIB + piece table) ----------
-fn read_doc(d: &[u8]) -> Result<Doc, String> {
-    let c = crate::cfb::Cfb::open(d)?;
-    let wd = c.stream("WordDocument").ok_or("DOC: no WordDocument stream")?;
-    let u16 = |b: &[u8], o: usize| b.get(o..o + 2).map_or(0, |x| x[0] as usize | (x[1] as usize) << 8);
-    let u32 = |b: &[u8], o: usize| b.get(o..o + 4).map_or(0, |x| u32::from_le_bytes([x[0], x[1], x[2], x[3]]) as usize);
-    if u16(&wd, 0) != 0xA5EC { return Err("DOC: not a Word 97+ file".into()); }
-    let flags = u16(&wd, 0x0A);
-    if flags & 0x100 != 0 { return Err("DOC: encrypted documents are not supported".into()); }
-    let tbl = c.stream(if flags & 0x200 != 0 { "1Table" } else { "0Table" }).ok_or("DOC: table stream missing")?;
-    let (fc, lcb, ccp) = (u32(&wd, 0x1A2), u32(&wd, 0x1A6), u32(&wd, 0x4C));
-    let clx = tbl.get(fc..fc + lcb).ok_or("DOC: bad CLX")?;
-    let mut i = 0; while clx.get(i) == Some(&1) { i += 3 + u16(clx, i + 1); }
-    if clx.get(i) != Some(&2) { return Err("DOC: piece table missing".into()); }
-    let plc = clx.get(i + 5..i + 5 + u32(clx, i + 1)).ok_or("DOC: bad piece table")?;
-    let n = (plc.len().saturating_sub(4)) / 12; let mut text = String::new();
-    for k in 0..n {
-        let (cp0, cp1) = (u32(plc, k * 4), u32(plc, (k + 1) * 4)); if cp0 >= ccp { break; } let cp1 = cp1.min(ccp);
-        let fcv = u32(plc, 4 * (n + 1) + k * 8 + 2);
-        if fcv & 0x4000_0000 != 0 { let o = (fcv & 0x3FFF_FFFF) / 2; text.extend(wd.get(o..o + (cp1 - cp0)).ok_or("DOC: bad text range")?.iter().map(|&b| b as char)); }
-        else { let o = fcv; let u: Vec<u16> = (0..cp1 - cp0).map(|j| u16(&wd, o + 2 * j) as u16).collect(); text.extend(char::decode_utf16(u).map(|r| r.unwrap_or('?'))); }
-    }
-    let (mut paras, mut cur, mut instr) = (vec![], String::new(), false);
-    for ch in text.chars() { match ch {
-        '\r' => paras.push(Para::plain(&std::mem::take(&mut cur))), '\u{13}' => instr = true, '\u{14}' | '\u{15}' => instr = false,
-        '\u{7}' | '\u{b}' | '\t' => if !instr { cur.push(' ') }, c if c < ' ' => {}, c => if !instr { cur.push(c) } } }
-    if !cur.is_empty() || paras.is_empty() { paras.push(Para::plain(&cur)); }
-    Ok(Doc { paras })
-}
-
-// ---------- DOCX ----------
-fn read_docx(d: &[u8]) -> Result<Doc, String> {
-    let x = zipio::read(d, "word/document.xml")?.ok_or("DOCX: word/document.xml missing")?;
-    let (mut paras, mut p, mut r, mut in_t, mut in_rpr, mut in_ppr) = (vec![], Para::default(), Run::default(), false, false, false);
-    let on = |a: &[(String, String)]| !matches!(attr(a, "val"), Some("0") | Some("false") | Some("none"));
-    for ev in xml::parse(&String::from_utf8_lossy(&x)) {
-        match ev {
-            Ev::Start(n, a) => match n.as_str() {
-                "p" => p = Para::default(), "pPr" => in_ppr = true, "rPr" => in_rpr = true, "r" => r = Run::default(), "t" => in_t = true,
-                "pStyle" => { let v = attr(&a, "val").unwrap_or("").to_lowercase().replace(' ', ""); p.style = match v.as_str() { "title" => Style::Title, "quote" => Style::Quote, "code" => Style::Code, s if s.starts_with("heading") => Style::from_level(s[7..].parse().unwrap_or(0)), _ => Style::Normal }; }
-                "jc" => p.align = match attr(&a, "val") { Some("center") => Align::Center, Some("right") => Align::Right, Some("both") => Align::Justify, _ => Align::Left },
-                "b" if in_rpr => r.bold = on(&a), "i" if in_rpr => r.italic = on(&a), "u" if in_rpr => r.underline = on(&a),
-                "tab" | "br" if !in_ppr => p.runs.push(Run { text: " ".into(), ..r.clone() }),
-                _ => {}
-            },
-            Ev::End(n) => match n.as_str() { "pPr" => in_ppr = false, "rPr" => in_rpr = false, "t" => in_t = false, "p" => { p.normalize(); paras.push(std::mem::take(&mut p)); } _ => {} },
-            Ev::Text(t) => if in_t { p.runs.push(Run { text: t, ..r.clone() }); },
-        }
-    }
-    if paras.is_empty() { paras.push(Para::default()); }
-    Ok(Doc { paras })
-}
-fn write_docx(d: &Doc) -> Vec<u8> {
-    let w = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
-    let mut body = String::new();
-    for p in &d.paras {
-        body.push_str("<w:p><w:pPr>");
-        body.push_str(match p.style { Style::Title => "<w:pStyle w:val=\"Title\"/>", Style::H1 => "<w:pStyle w:val=\"Heading1\"/>", Style::H2 => "<w:pStyle w:val=\"Heading2\"/>", Style::H3 => "<w:pStyle w:val=\"Heading3\"/>", Style::Quote => "<w:pStyle w:val=\"Quote\"/>", Style::Code => "<w:pStyle w:val=\"Code\"/>", _ => "" });
-        body.push_str(match p.align { Align::Center => "<w:jc w:val=\"center\"/>", Align::Right => "<w:jc w:val=\"right\"/>", Align::Justify => "<w:jc w:val=\"both\"/>", _ => "" });
-        body.push_str("</w:pPr>");
-        for r in &p.runs { body.push_str(&format!("<w:r><w:rPr>{}{}{}</w:rPr><w:t xml:space=\"preserve\">{}</w:t></w:r>", if r.bold { "<w:b/>" } else { "" }, if r.italic { "<w:i/>" } else { "" }, if r.underline { "<w:u w:val=\"single\"/>" } else { "" }, esc(&r.text))); }
-        body.push_str("</w:p>");
-    }
-    let sty = |id: &str, name: &str, ppr: &str, rpr: &str| format!("<w:style w:type=\"paragraph\" w:styleId=\"{id}\"><w:name w:val=\"{name}\"/><w:basedOn w:val=\"Normal\"/><w:pPr>{ppr}</w:pPr><w:rPr>{rpr}</w:rPr></w:style>");
-    let styles = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:styles {w}><w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>{}{}{}{}{}{}</w:styles>",
-        sty("Title", "Title", "", "<w:b/><w:sz w:val=\"56\"/>"), sty("Heading1", "heading 1", "<w:outlineLvl w:val=\"0\"/>", "<w:b/><w:sz w:val=\"40\"/>"),
-        sty("Heading2", "heading 2", "<w:outlineLvl w:val=\"1\"/>", "<w:b/><w:sz w:val=\"32\"/>"), sty("Heading3", "heading 3", "<w:outlineLvl w:val=\"2\"/>", "<w:b/><w:sz w:val=\"26\"/>"),
-        sty("Quote", "Quote", "<w:ind w:left=\"720\"/>", "<w:i/>"), sty("Code", "Code", "", "<w:rFonts w:ascii=\"Consolas\" w:hAnsi=\"Consolas\"/>"));
-    let mut z = zipio::Writer::new();
-    z.add("[Content_Types].xml", b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/><Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/></Types>");
-    z.add("_rels/.rels", b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>");
-    z.add("word/_rels/document.xml.rels", b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
-    z.add("word/styles.xml", styles.as_bytes());
-    z.add("word/document.xml", format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document {w}><w:body>{body}</w:body></w:document>").as_bytes());
-    z.finish()
 }
 
 // ---------- ODT / SXW ----------

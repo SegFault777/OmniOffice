@@ -8,3 +8,6 @@ license.workspace = true
 [dependencies]
 omni-common = { path = "../omni-common" }
 regex = "1"
+
+[dev-dependencies]
+miniz_oxide = "0.8"

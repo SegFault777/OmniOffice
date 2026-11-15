@@ -6,9 +6,25 @@ use omnicel_core::{col_name, Sheet, Value};
 use std::{path::PathBuf, time::Instant};
 
 const CW: f32 = 104.; const RH: f32 = 24.; const HW: f32 = 48.; const TOP: f32 = 100.;
-struct Cel { sh: Sheet, path: Option<PathBuf>, sel: (u32, u32), edit: Option<String>, sc: (u32, u32), dirty: bool, toast: String, drag_from: Option<(u32, u32)>, size: (f32, f32), _t: Instant, hot: Vec<(Rect, &'static str, &'static str)>, hover: (f32, f32) }
+struct Cel { sh: Sheet, path: Option<PathBuf>, sel: (u32, u32), edit: Option<String>, sc: (u32, u32), dirty: bool, toast: String, anchor: Option<(u32, u32)>, undo: Vec<Sheet>, redo: Vec<Sheet>, down: bool, size: (f32, f32), _t: Instant, hot: Vec<(Rect, &'static str, &'static str)>, hover: (f32, f32) }
 impl Cel {
-    fn commit(&mut self) { if let Some(b) = self.edit.take() { self.sh.set(self.sel.0, self.sel.1, &b); self.dirty = true; } }
+    fn snap(&mut self) { self.undo.push(self.sh.clone()); if self.undo.len() > 100 { self.undo.remove(0); } self.redo.clear(); self.dirty = true; }
+    fn commit(&mut self) { if let Some(b) = self.edit.take() { self.snap(); self.sh.set(self.sel.0, self.sel.1, &b); } }
+    /// Selected range as ((top, left), (bottom, right)).
+    fn range(&self) -> ((u32, u32), (u32, u32)) { let a = self.anchor.unwrap_or(self.sel); ((a.0.min(self.sel.0), a.1.min(self.sel.1)), (a.0.max(self.sel.0), a.1.max(self.sel.1))) }
+    fn step(&mut self, r: i64, c: i64, extend: bool) { let a = self.anchor.or(Some(self.sel)); self.goto(r, c); self.anchor = if extend { a } else { None }; }
+    fn act(&mut self, id: &str) {
+        self.commit(); let (a, b) = self.range();
+        match id {
+            "open" => self.open(), "save" => self.save(),
+            "undo" => if let Some(s) = self.undo.pop() { self.redo.push(std::mem::replace(&mut self.sh, s)); self.dirty = true; },
+            "redo" => if let Some(s) = self.redo.pop() { self.undo.push(std::mem::replace(&mut self.sh, s)); self.dirty = true; },
+            "copy" | "cut" => { let t = self.sh.range_tsv(a.0, a.1, b.0, b.1); if let Ok(mut cb) = arboard::Clipboard::new() { let _ = cb.set_text(t); } if id == "cut" { self.snap(); self.sh.clear_range(a.0, a.1, b.0, b.1); } }
+            "paste" => if let Ok(t) = arboard::Clipboard::new().and_then(|mut cb| cb.get_text()) { self.snap(); let (rows, cols) = self.sh.paste_tsv(a.0, a.1, &t); self.anchor = Some((a.0 + rows.saturating_sub(1), a.1 + cols.saturating_sub(1))); self.sel = a; self.anchor = Some((a.0 + rows.saturating_sub(1), a.1 + cols.saturating_sub(1))); },
+            "all" => { let (r, c) = self.sh.dims(); self.anchor = Some((0, 0)); self.sel = (r.saturating_sub(1), c.saturating_sub(1)); }
+            _ => {}
+        }
+    }
     fn goto(&mut self, r: i64, c: i64) {
         self.commit(); self.sel = (r.clamp(0, 99_999) as u32, c.clamp(0, 999) as u32);
         let (vr, vc) = (((self.size.1 - TOP - 24.) / RH) as u32, ((self.size.0 - HW) / CW) as u32);
@@ -36,11 +52,11 @@ impl App for Cel {
         self.size = (w, h); fill(c, Rect::new(0., 0., w, h), 0xFFFFFF);
         fill(c, Rect::new(0., 0., w, 36.), 0x1D6F42); text(c, &format!("OmniCel  |  {}{}", self.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled"), if self.dirty { "  - Unsaved" } else { "" }), 12., 23., 13., true, 0xFFFFFF);
         self.hot.clear(); let mut hov = "";
-        for (i, (id, ic, tip)) in [("open", "folder_open", "Open (Ctrl+O)"), ("save", "save", "Save (Ctrl+S)")].into_iter().enumerate() {
+        for (i, (id, ic, tip)) in [("open", "folder_open", "Open (Ctrl+O)"), ("save", "save", "Save (Ctrl+S)"), ("undo", "undo", "Undo (Ctrl+Z)"), ("redo", "redo", "Redo (Ctrl+Y)"), ("cut", "content_cut", "Cut (Ctrl+X)"), ("copy", "content_copy", "Copy (Ctrl+C)"), ("paste", "content_paste", "Paste (Ctrl+V)")].into_iter().enumerate() {
             let r = Rect::new(250. + i as f32 * 36., 5., 250. + i as f32 * 36. + 30., 31.); if inside(&r, self.hover) { rrect(c, r, 6., 0x2E8B57); hov = tip; }
             icon(c, ic, r.left + 3., r.top + 1., 24., 0xFFFFFF); self.hot.push((r, id, tip));
         }
-        text(c, if hov.is_empty() { "F2 edit   Del clear   arrows/Tab/Enter move" } else { hov }, 340., 23., 12., false, 0xE6F2EA);
+        text(c, if hov.is_empty() { "F2 edit   Del clear   Shift+arrows select" } else { hov }, 530., 23., 12., false, 0xE6F2EA);
         fill(c, Rect::new(0., 36., w, 66.), 0xF3F5F4); text(c, &format!("{}{}", col_name(self.sel.1), self.sel.0 + 1), 12., 56., 13., true, 0x1D6F42); text(c, "fx", 70., 56., 13., false, 0x888888);
         let raw = self.edit.clone().unwrap_or_else(|| self.sh.raw(self.sel.0, self.sel.1).to_string()); text(c, &raw, 100., 56., 13., false, 0x222222);
         let (vr, vc) = (((h - TOP - 24.) / RH) as u32 + 1, ((w - HW) / CW) as u32 + 1);
@@ -53,30 +69,34 @@ impl App for Cel {
                 let v = self.sh.eval(r, cc); if matches!(&v, Value::Text(t) if t.is_empty()) { continue; }
                 let s = v.show(); let (colr, right) = match &v { Value::Err(_) => (0xC0392B, false), Value::Num(_) => (0x1A1A1A, true), _ => (0x1A1A1A, false) };
                 c.save(); c.clip_rect(rect.with_inset((2., 0.)), None, false); let tx = if right { x + CW - 6. - measure(&s, 13., false) } else { x + 6. }; text(c, &s, tx, y + 17., 13., false, colr); c.restore(); } }
+        if self.anchor.is_some() { let (a, b) = self.range(); let (x0, y0) = (HW + (a.1 as f32 - self.sc.1 as f32) * CW, TOP + (a.0 as f32 - self.sc.0 as f32) * RH);
+            let (x1, y1) = (HW + (b.1 as f32 + 1. - self.sc.1 as f32) * CW, TOP + (b.0 as f32 + 1. - self.sc.0 as f32) * RH);
+            c.save(); c.clip_rect(Rect::new(HW, TOP, w, h - 24.), None, false); tint(c, Rect::new(x0, y0, x1, y1), 0x1D6F42, 40); stroke(c, Rect::new(x0, y0, x1, y1), 0x1D6F42, 1.5); c.restore(); }
         let sr = Rect::new(HW + (self.sel.1 as f32 - self.sc.1 as f32) * CW, TOP + (self.sel.0 as f32 - self.sc.0 as f32) * RH, 0., 0.); let sr = Rect::new(sr.left, sr.top, sr.left + CW, sr.top + RH);
         if let Some(b) = &self.edit { fill(c, sr, 0xFFFFFF); text(c, &format!("{b}|"), sr.left + 6., sr.top + 17., 13., false, 0x000000); } stroke(c, sr, 0x1D6F42, 2.);
         fill(c, Rect::new(0., h - 24., w, h), 0xF3F5F4); let (rows, cols) = self.sh.dims(); text(c, &format!("{}    Used range: {} rows x {} columns    {}", self.sh.eval(self.sel.0, self.sel.1).show(), rows, cols, self.toast), 10., h - 8., 12., false, 0x333333);
     }
     fn key(&mut self, e: &KeyEvent, m: ModifiersState) {
         let (r, c) = (self.sel.0 as i64, self.sel.1 as i64); self.toast.clear();
-        if m.control_key() || m.super_key() { if let Key::Character(k) = &e.logical_key { match k.to_lowercase().as_str() { "s" => self.save(), "o" => self.open(), _ => {} } } return; }
+        if m.control_key() || m.super_key() { if let Key::Character(k) = &e.logical_key { match k.to_lowercase().as_str() { "s" => self.save(), "o" => self.open(), "z" => self.act("undo"), "y" => self.act("redo"), "c" => self.act("copy"), "x" => self.act("cut"), "v" => self.act("paste"), "a" => self.act("all"), _ => {} } } return; }
         match &e.logical_key {
-            Key::Named(NamedKey::ArrowUp) => self.goto(r - 1, c), Key::Named(NamedKey::ArrowDown) => self.goto(r + 1, c), Key::Named(NamedKey::ArrowLeft) => self.goto(r, c - 1), Key::Named(NamedKey::ArrowRight) => self.goto(r, c + 1),
-            Key::Named(NamedKey::Enter) => self.goto(r + 1, c), Key::Named(NamedKey::Tab) => self.goto(r, c + 1),
+            Key::Named(NamedKey::ArrowUp) => self.step(r - 1, c, m.shift_key()), Key::Named(NamedKey::ArrowDown) => self.step(r + 1, c, m.shift_key()), Key::Named(NamedKey::ArrowLeft) => self.step(r, c - 1, m.shift_key()), Key::Named(NamedKey::ArrowRight) => self.step(r, c + 1, m.shift_key()),
+            Key::Named(NamedKey::Enter) => self.step(r + 1, c, false), Key::Named(NamedKey::Tab) => self.step(r, c + 1, false),
             Key::Named(NamedKey::Escape) => self.edit = None, Key::Named(NamedKey::F2) => self.edit = Some(self.sh.raw(self.sel.0, self.sel.1).to_string()),
-            Key::Named(NamedKey::Delete) => { self.sh.set(self.sel.0, self.sel.1, ""); self.dirty = true; }
+            Key::Named(NamedKey::Delete) => { self.snap(); let (a, b) = self.range(); self.sh.clear_range(a.0, a.1, b.0, b.1); }
             Key::Named(NamedKey::Backspace) => { if let Some(b) = self.edit.as_mut() { b.pop(); } else { self.edit = Some(String::new()); } }
             _ => if let Some(t) = &e.text { if !t.chars().any(char::is_control) { self.edit.get_or_insert_with(String::new).push_str(t); } },
         }
     }
     fn text(&mut self, s: &str) { self.edit.get_or_insert_with(String::new).push_str(s); }
-    fn moved(&mut self, x: f32, y: f32) { self.hover = (x, y); }
+    fn moved(&mut self, x: f32, y: f32) { self.hover = (x, y); if self.down { if let Some(rc) = self.cell_at(x, y) { self.sel = rc; } } }
+    fn mouse_up(&mut self) { self.down = false; }
     fn mouse(&mut self, x: f32, y: f32, _r: bool) {
-        if let Some(id) = self.hot.iter().find(|h| inside(&h.0, (x, y))).map(|h| h.1) { if id == "open" { self.open() } else { self.save() } return; } if let Some((r, c)) = self.cell_at(x, y) { self.goto(r as i64, c as i64); self.drag_from = Some((r, c)); } }
+        if let Some(id) = self.hot.iter().find(|h| inside(&h.0, (x, y))).map(|h| h.1) { self.act(id); return; } if let Some((r, c)) = self.cell_at(x, y) { self.goto(r as i64, c as i64); self.anchor = Some((r, c)); self.down = true; } }
     fn wheel(&mut self, dy: f32) { self.sc.0 = (self.sc.0 as i64 - dy as i64).max(0) as u32; }
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut a = Cel { sh: Sheet::default(), path: None, sel: (0, 0), edit: None, sc: (0, 0), dirty: false, toast: String::new(), drag_from: None, size: (1180., 760.), _t: Instant::now(), hot: vec![], hover: (0., 0.) };
+    let mut a = Cel { sh: Sheet::default(), path: None, sel: (0, 0), edit: None, sc: (0, 0), dirty: false, toast: String::new(), anchor: None, undo: vec![], redo: vec![], down: false, size: (1180., 760.), _t: Instant::now(), hot: vec![], hover: (0., 0.) };
     if let Some(p) = std::env::args().nth(1) { let p = PathBuf::from(p); let d = std::fs::read(&p).unwrap_or_default(); let r = if p.extension().map_or(false, |e| e == "omc") { Sheet::from_omc(&d) } else { Ok(Sheet::from_csv(&String::from_utf8_lossy(&d))) }; if let Ok(s) = r { a.sh = s; a.path = Some(p); } }
     run(a, "OmniCel")
 }
