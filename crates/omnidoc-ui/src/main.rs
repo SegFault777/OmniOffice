@@ -2,11 +2,11 @@
 //! OmniDoc desktop UI. OS-native window (winit) + native dialogs/clipboard/IME, drawn with Skia.
 //! Layout = Word 365 (title-bar search, tabbed ribbon, style gallery) + LibreOffice/Word Navigation pane
 //! + WPS-style familiarity + Google Docs/VS Code (command palette, find bar) + Word "Focus" mode.
-use omnidoc_core::{cmd, edit::Editor, formats, model::*};
-use skia_safe::{surfaces, textlayout::*, Color, Font, FontMgr, FontStyle, Paint, Rect};
+use omnidoc_core::{cmd, edit::Editor, formats, model::*, spell::Dict};
+use skia_safe::{surfaces, textlayout::*, Color, Data, Font, FontMgr, FontStyle, Image as SkImage, Paint, PaintStyle, Path, Rect};
 use omni_common::config;
 use omni_shell::icon;
-use std::{num::NonZeroU32, path::PathBuf, sync::Arc, time::{Duration, Instant}};
+use std::{cell::RefCell, collections::HashMap, num::NonZeroU32, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 use winit::{
     dpi::{LogicalPosition, LogicalSize}, event::*, event_loop::{ControlFlow, EventLoop}, keyboard::{Key, ModifiersState, NamedKey}, window::Window,
 };
@@ -22,11 +22,25 @@ fn u16of(s: &str, chars: usize) -> usize { s.chars().take(chars).map(char::len_u
 fn charof(s: &str, u: usize) -> usize { let (mut n, mut k) = (0, 0); for c in s.chars() { if n >= u { break; } n += c.len_utf16(); k += 1; } k }
 fn inside(r: &Rect, p: (f32, f32)) -> bool { p.0 >= r.left && p.0 <= r.right && p.1 >= r.top && p.1 <= r.bottom }
 
+thread_local! { static IMGS: RefCell<HashMap<usize, Option<SkImage>>> = RefCell::new(HashMap::new()); }
+/// Draw an embedded picture, decoding it once (cached by the address of its shared bytes).
+fn draw_img(c: &skia_safe::Canvas, img: &Image, r: Rect) {
+    IMGS.with(|m| { let mut m = m.borrow_mut(); let e = m.entry(Arc::as_ptr(&img.data) as usize).or_insert_with(|| SkImage::from_encoded(Data::new_copy(&img.data)));
+        if let Some(i) = e { c.draw_image_rect(&*i, None, r, &Paint::default()); } });
+}
+/// Red wavy underline for a misspelled word.
+fn squiggle(c: &skia_safe::Canvas, r: Rect) {
+    let mut p = Paint::default(); p.set_anti_alias(true); p.set_style(PaintStyle::Stroke); p.set_stroke_width(1.2); p.set_color(Color::from_rgb(0xD0, 0x30, 0x30));
+    let (mut path, y, mut x, mut up) = (Path::new(), r.bottom - 1., r.left, true); path.move_to((x, y));
+    while x < r.right { x = (x + 3.).min(r.right); path.line_to((x, if up { y - 2. } else { y })); up = !up; }
+    c.draw_path(&path, &p);
+}
 struct App {
     ed: Editor, path: Option<PathBuf>, dark: bool, tab: &'static str, ribbon: bool, nav: bool, focus: bool, zoom: f32, scroll: f32, follow: bool,
     palette: Option<(String, usize)>, find: Option<(String, String, bool, bool)>, preedit: String, mods: ModifiersState, mouse: (f32, f32), drag: bool,
     toast: String, fc: FontCollection, hot: Vec<(Rect, String)>, lay: Vec<(Paragraph, f32)>, page_x: f32, view_h: f32, sf: f32, ime_pos: (f32, f32),
     recent: Vec<String>, ctx: Option<(f32, f32)>, marks: bool, stats: bool, ribbon_scroll: f32, ribbon_w: f32, last_click: (Instant, (f32, f32), u8), last_autosave: Instant,
+    spell: Option<Dict>, spell_on: bool, ctx_extra: Vec<String>,
 }
 impl App {
     fn new() -> Self {
@@ -34,7 +48,8 @@ impl App {
         App { ed: Editor::new(Doc::default()), path: None, dark: false, tab: "Home", ribbon: true, nav: true, focus: false, zoom: 1.0, scroll: 0.0, follow: false,
             palette: None, find: None, preedit: String::new(), mods: ModifiersState::empty(), mouse: (0., 0.), drag: false, toast: String::new(), fc, hot: vec![], lay: vec![],
             page_x: 0., view_h: 0., sf: 1.0, ime_pos: (0., 0.),
-            recent: config::recent_load("omnidoc"), ctx: None, marks: false, stats: false, ribbon_scroll: 0., ribbon_w: 0., last_click: (Instant::now(), (0., 0.), 0), last_autosave: Instant::now() }
+            recent: config::recent_load("omnidoc"), ctx: None, marks: false, stats: false, ribbon_scroll: 0., ribbon_w: 0., last_click: (Instant::now(), (0., 0.), 0), last_autosave: Instant::now(),
+            spell: Dict::load_default(&[config::config_dir().join("dictionary.txt"), config::config_dir().join("omnidoc-user-dict.txt")]), spell_on: true, ctx_extra: vec![] }
     }
     fn th(&self) -> &'static Theme { if self.dark { &DARK } else { &LIGHT } }
     fn ui_font(&self, size: f32, bold: bool) -> Font {
@@ -42,25 +57,42 @@ impl App {
         let tf = FAMS.iter().find_map(|f| m.match_family_style(f, st)).or_else(|| m.legacy_make_typeface(None, st)).expect("no system fonts");
         Font::new(tf, size)
     }
-    fn build(&self, p: &Para, w: f32, pre: Option<usize>) -> Paragraph {
+    /// Build the Skia paragraph for one document paragraph. Table cells are separated by placeholders sized so that
+    /// cells line up in `ncols` equal columns; an image paragraph is a single placeholder of the picture's size.
+    fn build(&self, p: &Para, w: f32, pre: Option<usize>, ncols: usize) -> Paragraph {
         let (size, bold) = match p.style { Style::Title => (30., true), Style::H1 => (24., true), Style::H2 => (19., true), Style::H3 => (16., true), Style::Code => (13., false), _ => (14.5, false) };
         let mut ps = ParagraphStyle::new();
         ps.set_text_align(match p.align { Align::Left => TextAlign::Left, Align::Center => TextAlign::Center, Align::Right => TextAlign::Right, Align::Justify => TextAlign::Justify });
         let mut b = ParagraphBuilder::new(&ps, &self.fc);
-        let ink = self.th().ink;
+        let ink = self.th().ink; let colw = w / ncols.max(1) as f32; let mut cell_w = 0f32;
         let mut put = |b: &mut ParagraphBuilder, r: &Run, ul: bool| {
-            let mut t = TextStyle::new(); t.set_font_size(size * self.zoom * 1.333); t.set_color(col(ink));
+            let px = r.size.map_or(size, |s| s as f32) * self.zoom * 1.333; let fcolor = r.color.unwrap_or(ink);
+            let mut t = TextStyle::new(); t.set_font_size(px); t.set_color(col(fcolor));
             t.set_font_families(if p.style == Style::Code { MONO } else { FAMS });
             t.set_font_style(match (bold || r.bold, r.italic) { (true, true) => FontStyle::bold_italic(), (true, false) => FontStyle::bold(), (false, true) => FontStyle::italic(), _ => FontStyle::normal() });
-            if r.underline || ul { t.set_decoration_type(TextDecoration::UNDERLINE); t.set_decoration_color(col(ink)); }
-            b.push_style(&t); b.add_text(&r.text); b.pop();
+            let mut deco = TextDecoration::NO_DECORATION; if r.underline || ul { deco |= TextDecoration::UNDERLINE; } if r.strike { deco |= TextDecoration::LINE_THROUGH; }
+            if deco != TextDecoration::NO_DECORATION { t.set_decoration_type(deco); t.set_decoration_color(col(fcolor)); }
+            b.push_style(&t);
+            if p.table && r.text.contains('\t') {
+                for (i, part) in r.text.split('\t').enumerate() {
+                    if i > 0 { b.add_placeholder(&PlaceholderStyle::new((colw - cell_w).max(14.), px * 0.95, PlaceholderAlignment::Baseline, TextBaseline::Alphabetic, 0.)); cell_w = 0.; }
+                    b.add_text(part); cell_w += omni_shell::measure(part, px, bold || r.bold);
+                }
+            } else { b.add_text(&r.text); if p.table { cell_w += omni_shell::measure(&r.text, px, bold || r.bold); } }
+            b.pop();
         };
-        let (a, rest) = match pre { Some(o) if !self.preedit.is_empty() => { let (a, r) = p.split(o); (a, Some(r)) } _ => (p.runs.clone(), None) };
-        for r in &a { put(&mut b, r, false); }
-        if let Some(rest) = rest { put(&mut b, &Run { text: self.preedit.clone(), ..self.ed.fmt_at(self.ed.cur) }, true); for r in &rest { put(&mut b, r, false); } }
-        if p.is_empty() && self.preedit.is_empty() { put(&mut b, &Run::plain(" "), false); }
+        if let Some(img) = &p.image {
+            let dw = (img.w.max(1) as f32 * self.zoom).min(w); let dh = img.h as f32 * dw / img.w.max(1) as f32;
+            b.add_placeholder(&PlaceholderStyle::new(dw, dh.max(8.), PlaceholderAlignment::Baseline, TextBaseline::Alphabetic, 0.));
+        } else {
+            let (a, rest) = match pre { Some(o) if !self.preedit.is_empty() => { let (a, r) = p.split(o); (a, Some(r)) } _ => (p.runs.clone(), None) };
+            for r in &a { put(&mut b, r, false); }
+            if let Some(rest) = rest { put(&mut b, &Run { text: self.preedit.clone(), ..self.ed.fmt_at(self.ed.cur) }, true); for r in &rest { put(&mut b, r, false); } }
+            if p.is_empty() && self.preedit.is_empty() { put(&mut b, &Run::plain(" "), false); }
+        }
         let mut para = b.build(); para.layout(w); para
     }
+    fn ncols(&self, i: usize) -> usize { self.ed.table_block(i).map_or(1, |(s, e)| (s..=e).map(|k| self.ed.doc.paras[k].cells().len()).max().unwrap_or(1)) }
     fn locate(&self, pos: (usize, usize)) -> (f32, f32, f32) {
         let (para, top) = &self.lay[pos.0]; let t = self.ed.doc.paras[pos.0].text();
         let mut u = u16of(&t, pos.1); if pos.0 == self.ed.cur.0 { u += u16len(&self.preedit); }
@@ -109,7 +141,9 @@ impl App {
         }
     }
     fn run(&mut self, id: &str) {
-        if let Some(t) = id.strip_prefix("tab:") { self.tab = ["File", "Home", "Review", "View"].into_iter().find(|x| *x == t).unwrap_or("Home"); return; }
+        if let Some(t) = id.strip_prefix("tab:") { self.tab = ["File", "Home", "Insert", "Review", "View"].into_iter().find(|x| *x == t).unwrap_or("Home"); return; }
+        if let Some(w) = id.strip_prefix("spell:fix:") { self.ed.select_word(); self.ed.insert(w); self.follow = true; return; }
+        if let Some(w) = id.strip_prefix("spell:add:") { if let Some(d) = self.spell.as_mut() { d.add(w); } let f = config::config_dir().join("omnidoc-user-dict.txt"); let _ = std::fs::create_dir_all(config::config_dir()); let old = std::fs::read_to_string(&f).unwrap_or_default(); let _ = std::fs::write(f, format!("{old}{w}\n")); self.toast = format!("Added \"{w}\" to the dictionary"); return; }
         if let Some(i) = id.strip_prefix("recent:").and_then(|x| x.parse::<usize>().ok()) { if let Some(p) = self.recent.get(i).cloned() { self.open_path(PathBuf::from(p)); } return; }
         match id {
             "file.new" => { self.ed = Editor::new(Doc::default()); self.path = None; }
@@ -118,7 +152,7 @@ impl App {
             "view.ribbon" => self.ribbon = !self.ribbon, "view.zoomin" => self.zoom = (self.zoom + 0.1).min(3.), "view.zoomout" => self.zoom = (self.zoom - 0.1).max(0.5),
             "find.open" => self.find = Some((self.ed.selected_text(), String::new(), false, false)),
             "find.regex" => match self.find.as_mut() { Some(f) => f.3 = !f.3, None => self.find = Some((String::new(), String::new(), false, true)) },
-            "view.marks" => self.marks = !self.marks, "tools.stats" => self.stats = !self.stats, "palette.open" => self.palette = Some((String::new(), 0)),
+            "view.marks" => self.marks = !self.marks, "image.insert" => self.insert_image(), "spell.toggle" => self.toggle_spell(), "tools.stats" => self.stats = !self.stats, "palette.open" => self.palette = Some((String::new(), 0)),
             "edit.copy" | "edit.cut" => { let t = self.ed.selected_text(); if !t.is_empty() { if let Ok(mut c) = arboard::Clipboard::new() { let _ = c.set_text(t); } if id == "edit.cut" { self.ed.delete_selection(); } } }
             "edit.paste" => if let Ok(t) = arboard::Clipboard::new().and_then(|mut c| c.get_text()) { self.ed.insert(&t); },
             _ => { cmd::exec(&mut self.ed, id); }
@@ -147,7 +181,7 @@ impl App {
                 Key::Named(NamedKey::Tab) => { *f2 = !*f2; return }
                 Key::Named(NamedKey::Enter) => { let (qq, rr) = (q.clone(), r.clone());
                     if self.mods.control_key() { match if rx { self.ed.replace_all_regex(&qq, &rr, false) } else { Ok(self.ed.replace_all(&qq, &rr, false)) } { Ok(n) => self.toast = format!("Replaced {n}"), Err(e) => self.toast = e } }
-                    else { match if rx { self.ed.find_next_regex(&qq, false) } else { Ok(self.ed.find_next(&qq, false)) } { Ok(true) => {} Ok(false) => self.toast = "Not found".into(), Err(e) => self.toast = e } }
+                    else { if self.mods.shift_key() && self.ed.range().is_some() { self.ed.insert(&rr); } match if rx { self.ed.find_next_regex(&qq, false) } else { Ok(self.ed.find_next(&qq, false)) } { Ok(true) => {} Ok(false) => self.toast = "Not found".into(), Err(e) => self.toast = e } }
                     self.follow = true; return }
                 Key::Named(NamedKey::Backspace) => { unsafe { (*field(q, r, *f2)).pop(); } return }
                 _ => if !self.mods.control_key() && !self.mods.alt_key() { if let Some(t) = &e.text { unsafe { (*field(q, r, *f2)).push_str(t); } return } },
@@ -162,7 +196,7 @@ impl App {
         let ed = &mut self.ed; self.follow = true;
         match &e.logical_key {
             Key::Named(NamedKey::Enter) => { if !ed.accept_completion() { ed.autocorrect(); ed.insert("\n"); } } Key::Named(NamedKey::Backspace) => ed.backspace(), Key::Named(NamedKey::Delete) => ed.delete(),
-            Key::Named(NamedKey::Tab) => ed.insert("    "),
+            Key::Named(NamedKey::Tab) => { if !ed.table_tab(shift) { if shift { ed.indent(-1) } else { ed.insert("    ") } } }
             Key::Named(NamedKey::ArrowLeft) => { let p = ed.left(); ed.mv(p, shift) } Key::Named(NamedKey::ArrowRight) => { let p = ed.right(); ed.mv(p, shift) }
             Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::ArrowDown) if !self.lay.is_empty() => {
                 let up = matches!(e.logical_key, Key::Named(NamedKey::ArrowUp)); let (x, y, h) = self.locate(self.ed.cur);
@@ -190,8 +224,22 @@ impl App {
             match n { 2 => self.ed.select_word(), 3 => self.ed.select_para(), _ => self.drag = true }
         }
     }
+    fn insert_image(&mut self) {
+        let Some(p) = rfd::FileDialog::new().add_filter("Pictures", &["png", "jpg", "jpeg", "gif"]).pick_file() else { return };
+        match std::fs::read(&p).map_err(|e| e.to_string()).and_then(|d| self.ed.insert_image(d, p.file_stem().and_then(|n| n.to_str()).unwrap_or("picture"))) { Ok(()) => self.follow = true, Err(e) => self.toast = e }
+    }
+    fn toggle_spell(&mut self) {
+        if self.spell.is_none() { self.toast = format!("No word list found. Put one word per line in {}", config::config_dir().join("dictionary.txt").display()); } else { self.spell_on = !self.spell_on; self.toast = format!("Spell check {}", if self.spell_on { "on" } else { "off" }); }
+    }
+    fn ctx_items(&self) -> Vec<String> { let mut v = self.ctx_extra.clone(); v.extend(cmd::context_menu(self.ed.range().is_some()).into_iter().map(String::from)); v }
     fn right_click(&mut self) {
         if !self.lay.is_empty() && self.mouse.0 >= self.page_x && self.mouse.1 > self.body_top() && self.ed.range().is_none() { let p = self.page_hit(); self.ed.mv(p, false); }
+        self.ctx_extra.clear();
+        if let (true, Some(d)) = (self.spell_on, self.spell.as_ref()) {
+            let (a, b) = self.ed.word_bounds(self.ed.cur);
+            if b.1 > a.1 { let t: String = self.ed.doc.paras[a.0].text().chars().skip(a.1).take(b.1 - a.1).collect();
+                if !d.check(&t) { for sg in d.suggest(&t, 4) { self.ctx_extra.push(format!("spell:fix:{sg}")); } self.ctx_extra.push(format!("spell:add:{t}")); self.ctx_extra.push("-".into()); } }
+        }
         self.ctx = Some(self.mouse);
     }
     fn page_hit(&self) -> (usize, usize) { self.hit(self.mouse.0 - self.page_x - 72. * self.zoom, self.mouse.1 + self.scroll - self.body_top() - 40.) }
@@ -212,7 +260,7 @@ impl App {
         let inner = page_w - 144. * self.zoom;
         let pre = self.ed.cur.0;
         self.lay.clear(); let mut y = 0.;
-        for (i, p) in self.ed.doc.paras.iter().enumerate() { let pa = self.build(p, inner, (i == pre).then_some(self.ed.cur.1)); let hh = pa.height() + 8. * self.zoom; self.lay.push((pa, y)); y += hh; }
+        for (i, p) in self.ed.doc.paras.iter().enumerate() { let pa = self.build(p, inner, (i == pre).then_some(self.ed.cur.1), self.ncols(i)); let hh = pa.height() + if p.table { 2. } else { 8. } * self.zoom; self.lay.push((pa, y)); y += hh; }
         let total = y + 80.; self.view_h = h - top - status_h;
         if self.follow { let (_, cy, ch) = self.locate(self.ed.cur); let cy = cy + 40.; if cy < self.scroll { self.scroll = cy - 20. } else if cy + ch > self.scroll + self.view_h { self.scroll = cy + ch - self.view_h + 40. } self.follow = false; }
         self.scroll = self.scroll.clamp(0., (total + 80. - self.view_h).max(0.));
@@ -233,6 +281,15 @@ impl App {
             }
         }
         for (p, ty) in &self.lay { p.paint(c, (ox, oy + ty)); }
+        for (i, (pa, ty)) in self.lay.iter().enumerate() {
+            let (top_y, para) = (oy + ty, &self.ed.doc.paras[i]); if top_y > h || top_y + pa.height() < top { continue; }
+            if para.table { let n = self.ncols(i); let colw = inner / n as f32; let bx = Rect::new(ox - 6., top_y, ox + inner, top_y + pa.height());
+                let mut lp = Paint::default(); lp.set_style(PaintStyle::Stroke); lp.set_stroke_width(1.); lp.set_color(col(0x9AA0A9)); c.draw_rect(bx, &lp);
+                for k in 1..n { let vx = ox + k as f32 * colw - 7.; c.draw_line((vx, top_y), (vx, top_y + pa.height()), &lp); } }
+            if let Some(img) = &para.image { if let Some(r) = pa.get_rects_for_range(0..1, RectHeightStyle::Max, RectWidthStyle::Tight).first() { draw_img(c, img, r.rect.with_offset((ox, top_y))); } }
+            if self.spell_on && para.image.is_none() && !para.table && i != self.ed.cur.0 { if let Some(d) = &self.spell { let tx = para.text();
+                for (s0, e0) in d.misspelled(&tx) { for bx in pa.get_rects_for_range(u16of(&tx, s0)..u16of(&tx, e0), RectHeightStyle::Max, RectWidthStyle::Tight) { squiggle(c, bx.rect.with_offset((ox, top_y))); } } } }
+        }
         let (cx, cy, ch) = self.locate(self.ed.cur); let mut p = Paint::default(); p.set_color(col(t.ink)); c.draw_rect(Rect::new(ox + cx, oy + cy, ox + cx + 1.5, oy + cy + ch), &p);
         self.ime_pos = (ox + cx, oy + cy + ch);
         if self.marks { let mf = self.ui_font(12., false); for i in 0..self.lay.len() { let (x, y, h) = self.locate((i, self.ed.doc.paras[i].len())); text(c, &mf, "¶", ox + x + 4., oy + y + h * 0.75, 0x8A9099); } }
@@ -254,7 +311,7 @@ impl App {
             let by = 36. + 28. + if self.ribbon { 84. } else { 0. };
             let mut p = Paint::default(); p.set_color(col(t.bar)); c.draw_rect(Rect::new(0., by, w, by + 34.), &p);
             for (k, (lab, val)) in [("Find", q), ("Replace", r)].into_iter().enumerate() { let x = 12. + k as f32 * 280.; let rr = Rect::new(x + 58., by + 5., x + 270., by + 29.); text(c, &f, lab, x, by + 22., t.ink); rrect(c, rr, 4., if (k == 1) == f2 { t.accent } else { t.line }); rrect(c, rr.with_inset((1.5, 1.5)), 3., t.paper); text(c, &f, &val, rr.left + 6., by + 22., t.ink); }
-            text(c, &f, &format!("[{}] Regex (Alt+R)   Enter: next   Ctrl+Enter: replace all   Tab: switch   Esc: close", if rx { "x" } else { " " }), 580., by + 22., t.ink);
+            text(c, &f, &format!("[{}] Regex (Alt+R)   Enter: next   Shift+Enter: replace   Ctrl+Enter: replace all   Tab: switch   Esc: close", if rx { "x" } else { " " }), 580., by + 22., t.ink);
         }
         // ---- title bar + search box ----
         let mut p = Paint::default(); p.set_color(col(t.accent)); c.draw_rect(Rect::new(0., 0., w, 36.), &p);
@@ -264,7 +321,7 @@ impl App {
         // ---- tabs ----
         let mut p = Paint::default(); p.set_color(col(t.bar)); c.draw_rect(Rect::new(0., 36., w, 36. + 28. + if self.ribbon { 84. } else { 0. }), &p);
         let mut x = 10.;
-        for tb in ["File", "Home", "Review", "View"] {
+        for tb in ["File", "Home", "Insert", "Review", "View"] {
             let tw = f.measure_str(tb, None).0 + 24.; let r = Rect::new(x, 38., x + tw, 64.);
             text(c, if tb == self.tab { &fb } else { &f }, tb, x + 12., 56., t.ink);
             if tb == self.tab { let mut p = Paint::default(); p.set_color(col(t.accent)); c.draw_rect(Rect::new(x + 8., 62., x + tw - 8., 64.), &p); }
@@ -275,7 +332,7 @@ impl App {
             let (mut x, mut group, mut gstart) = (10. - self.ribbon_scroll, "", 10. - self.ribbon_scroll); let ry = 68.;
             let mut end_group = |c: &skia_safe::Canvas, g: &str, x0: f32, x1: f32| { if !g.is_empty() { let w = f.measure_str(g, None).0; text(c, &f, g, x0 + (x1 - x0 - w) / 2., ry + 76., 0x707680); let mut p = Paint::default(); p.set_color(col(t.line)); c.draw_rect(Rect::new(x1 + 4., ry + 6., x1 + 5., ry + 72.), &p); } };
             let (fa, fi, fu) = { let c = self.ed.pend.clone().unwrap_or_else(|| self.ed.fmt_at(self.ed.cur)); (c.bold, c.italic, c.underline) };
-            const ORDER: &[&str] = &["File", "Undo", "Clipboard", "Font", "Paragraph", "Styles", "Editing", "Case", "Proofing", "Find", "Show", "Zoom"];
+            const ORDER: &[&str] = &["File", "Undo", "Clipboard", "Font", "Color", "Paragraph", "Styles", "Editing", "Case", "Tables", "Table Edit", "Illustrations", "Proofing", "Find", "Show", "Zoom"];
             let mut cs: Vec<&cmd::Command> = cmd::COMMANDS.iter().filter(|c| c.tab == self.tab).collect();
             cs.sort_by_key(|c| ORDER.iter().position(|g| *g == c.group).unwrap_or(99));
             for cm in cs {
@@ -313,15 +370,17 @@ impl App {
         text(c, &f, &format!("{}%", (self.zoom * 100.) as i32), w - 90., h - 8., t.ink);
         // ---- context menu ----
         if let Some((mx, my)) = self.ctx {
-            let items = cmd::context_menu(self.ed.range().is_some());
-            let hgt: f32 = items.iter().map(|i| if *i == "-" { 9. } else { 26. }).sum::<f32>() + 8.; let (px, py) = (mx.min(w - 260.), my.min(h - hgt - 4.));
+            let items = self.ctx_items();
+            let hgt: f32 = items.iter().map(|i| if i == "-" { 9. } else { 26. }).sum::<f32>() + 8.; let (px, py) = (mx.min(w - 260.), my.min(h - hgt - 4.));
             rrect(c, Rect::new(px - 1., py - 1., px + 251., py + hgt + 1.), 8., t.line); rrect(c, Rect::new(px, py, px + 250., py + hgt), 7., t.bar2);
             let mut y = py + 4.;
             for id in items {
                 if id == "-" { let mut p = Paint::default(); p.set_color(col(t.line)); c.draw_rect(Rect::new(px + 8., y + 4., px + 242., y + 5.), &p); y += 9.; continue; }
-                let cm = cmd::COMMANDS.iter().find(|c| c.id == id); let rr = Rect::new(px + 4., y, px + 246., y + 26.);
-                if inside(&rr, self.mouse) { rrect(c, rr, 5., t.accent); }
-                let hi = inside(&rr, self.mouse); if let Some(cm) = cm { icon(c, cmd::icon(id), px + 12., y + 4., 18., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.title, px + 38., y + 18., if hi { 0xFFFFFF } else { t.ink }); text(c, &f, cm.keys, px + 150., y + 18., if hi { 0xFFFFFF } else { 0x8A9099 }); }
+                let rr = Rect::new(px + 4., y, px + 246., y + 26.); let hi = inside(&rr, self.mouse); if hi { rrect(c, rr, 5., t.accent); }
+                let fg = if hi { 0xFFFFFF } else { t.ink };
+                if let Some(sg) = id.strip_prefix("spell:fix:") { icon(c, "spell", px + 12., y + 4., 18., fg); text(c, &fb, sg, px + 38., y + 18., fg); }
+                else if id.starts_with("spell:add:") { icon(c, "note_add", px + 12., y + 4., 18., fg); text(c, &f, "Add to Dictionary", px + 38., y + 18., fg); }
+                else if let Some(cm) = cmd::COMMANDS.iter().find(|c| c.id == id) { icon(c, cmd::icon(&id), px + 12., y + 4., 18., fg); text(c, &f, cm.title, px + 38., y + 18., fg); text(c, &f, cm.keys, px + 150., y + 18., if hi { 0xFFFFFF } else { 0x8A9099 }); }
                 self.hot.push((rr, format!("ctx:{id}"))); y += 26.;
             }
         }

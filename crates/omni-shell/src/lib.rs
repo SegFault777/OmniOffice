@@ -6,7 +6,7 @@ mod icons_data;
 pub use icons::{has_icon, icon};
 pub use skia_safe::{Canvas, Rect};
 pub use winit::{event::KeyEvent, keyboard::{Key, ModifiersState, NamedKey}};
-use skia_safe::{surfaces, textlayout::*, Color, Font, FontMgr, FontStyle, Paint, PaintStyle};
+use skia_safe::{surfaces, textlayout::*, Color, Data, Font, FontMgr, FontStyle, Image as SkImage, Paint, PaintStyle};
 use std::{num::NonZeroU32, sync::Arc, time::{Duration, Instant}};
 use winit::{dpi::LogicalSize, event::*, event_loop::{ControlFlow, EventLoop}, window::Window};
 
@@ -44,7 +44,9 @@ pub trait App {
     fn moved(&mut self, _x: f32, _y: f32) {}
     fn wheel(&mut self, _dy: f32) {}
     fn mouse_up(&mut self) {}
-    fn tick(&mut self) {}
+    /// Called on every wake-up; return true to request a redraw (e.g. for timers).
+    fn tick(&mut self) -> bool { false }
+    fn tick_interval(&self) -> Duration { Duration::from_secs(30) }
     /// Return true while an animation needs more frames.
     fn animating(&self) -> bool { false }
     fn wants_quit(&self) -> bool { false }
@@ -58,7 +60,7 @@ pub fn run(mut app: impl App + 'static, title: &str) -> Result<(), Box<dyn std::
     let (mut mods, mut mouse) = (ModifiersState::empty(), (0f32, 0f32));
     #[allow(deprecated)]
     el.run(move |ev, elwt| {
-        elwt.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_secs(30))); app.tick();
+        elwt.set_control_flow(ControlFlow::WaitUntil(Instant::now() + app.tick_interval())); if app.tick() { win.request_redraw(); }
         let Event::WindowEvent { event, .. } = ev else { return };
         let sf = win.scale_factor();
         match event {
@@ -88,3 +90,11 @@ pub fn run(mut app: impl App + 'static, title: &str) -> Result<(), Box<dyn std::
 pub fn oval(c: &Canvas, r: Rect, color: u32) { let mut p = Paint::default(); p.set_anti_alias(true); p.set_color(col(color)); c.draw_oval(r, &p); }
 pub fn line(c: &Canvas, a: (f32, f32), b: (f32, f32), color: u32, width: f32) { let mut p = Paint::default(); p.set_anti_alias(true); p.set_stroke_width(width); p.set_color(col(color)); c.draw_line(a, b, &p); }
 pub fn tint(c: &Canvas, r: Rect, color: u32, alpha: u8) { let mut p = Paint::default(); p.set_color(Color::from_argb(alpha, (color >> 16) as u8, (color >> 8) as u8, color as u8)); c.draw_rect(r, &p); }
+thread_local! { static IMGS: std::cell::RefCell<std::collections::HashMap<usize, Option<SkImage>>> = std::cell::RefCell::new(std::collections::HashMap::new()); }
+/// Draw encoded image bytes (PNG/JPEG/GIF) into `r`; each distinct buffer is decoded once.
+pub fn draw_image(c: &Canvas, data: &Arc<Vec<u8>>, r: Rect) {
+    IMGS.with(|m| { let mut m = m.borrow_mut(); let e = m.entry(Arc::as_ptr(data) as usize).or_insert_with(|| SkImage::from_encoded(Data::new_copy(data)));
+        if let Some(i) = e { c.draw_image_rect(&*i, None, r, &Paint::default()); } });
+}
+/// Filled pie slice (angles in degrees, 0 = 3 o'clock, clockwise).
+pub fn arc(c: &Canvas, oval: Rect, start: f32, sweep: f32, color: u32) { let mut p = Paint::default(); p.set_anti_alias(true); p.set_color(col(color)); c.draw_arc(oval, start, sweep, true, &p); }

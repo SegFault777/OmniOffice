@@ -33,7 +33,7 @@ fn p(style: &str, text: &str) -> String { format!("<w:p><w:pPr><w:pStyle w:val=\
         + "<mc:AlternateContent><mc:Choice><w:p><w:r><w:t>real</w:t></w:r></w:p></mc:Choice><mc:Fallback><w:p><w:r><w:t>dup</w:t></w:r></w:p></mc:Fallback></mc:AlternateContent>"
         + "<w:p><w:r><w:t>shown </w:t></w:r><w:r><w:rPr><w:vanish/></w:rPr><w:t>hidden</w:t></w:r><w:del><w:r><w:delText>gone</w:delText></w:r></w:del><w:ins><w:r><w:t>added</w:t></w:r></w:ins></w:p>";
     let d = formats::load("docx", &docx(&body, "", numbering)).unwrap();
-    assert_eq!(d.plain(), "\u{2022} dot\n1. one\n2. two\na    b\nc    d\nreal\nshown added\n");
+    assert_eq!(d.plain(), "\u{2022} dot\n1. one\n2. two\na\tb\nc\td\nreal\nshown added\n");
 }
 #[test] fn docx_write_has_styles_and_roundtrips() {
     let mut d = Doc::from_plain("Title\nbody"); d.paras[0].style = Style::H1; d.paras[1].align = Align::Justify;
@@ -88,7 +88,7 @@ fn word(pieces: &[(bool, &str)]) -> Vec<u8> {
     let pieces = [(true, "It‘s caf\u{e9}\r"), (false, "한글 문서\r"),
                   (true, "x\u{7}y\u{7}\u{7}"), (true, "see \u{13} HYPERLINK \"http://a\" \u{14}link\u{15} end\r")];
     let d = formats::load("doc", &word(&pieces)).unwrap();
-    assert_eq!(d.plain(), "It‘s café\n한글 문서\nx    y\nsee link end\n");
+    assert_eq!(d.plain(), "It‘s café\n한글 문서\nx\ty\nsee link end\n");
     assert!(formats::load("doc", b"junk").is_err());
 }
 /// HWP record: tag 10 bits, level 10 bits, size 12 bits.

@@ -3,7 +3,9 @@
 ## OmniDoc
 | Format | Read | Write | Fidelity |
 |---|---|---|---|
-| OMD, DOCX, ODT | yes | yes | styles, alignment, bold/italic/underline |
+| OMD | yes | yes | everything: styles, alignment, font size/colour, strikethrough, tables, pictures |
+| DOCX | yes | yes | styles, alignment, bold/italic/underline/strike, size, colour, tables, pictures (inline) |
+| ODT | yes | yes | styles, alignment, bold/italic/underline, tables (no size/colour/pictures yet) |
 | RTF | yes | yes | run formatting; headings come back as bold text |
 | MD | yes | yes | headings, quotes, code, inline formatting |
 | TXT, HTML, XHTML, XML, LaTeX, RST, Org, Typst, MediaWiki, AsciiDoc, SGML, GML | yes | yes | edited as source text |

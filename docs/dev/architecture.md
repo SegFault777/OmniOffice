@@ -13,3 +13,5 @@ Cores contain all logic and are unit-tested; UI crates only draw and forward inp
 202646e: `omnidoc-core` gained `docx` (styles-aware reader/writer) and `legacy` (DOC via piece table, HWP 5 via record stream); `omni-common::cfb` is shared.
 `omni-shell::ribbon` is a reusable ribbon widget (tabs, groups, icon buttons) used by OmniShow; `App` has `mouse_up` and `animating` hooks.
 OmniShow keeps undo history as deck snapshots; slideshow transitions are drawn from the previous and current slide.
+
+202647a: `Para` can be a table row (`table`, cells separated by tab characters) or a picture (`image`); `Run` has size/colour/strike. In the UI a table row is one Skia paragraph whose tabs are placeholders sized to equal columns, so text offsets stay identical to the model. `omnidoc_core::spell` is a pure word-list checker; `omnicel_core` owns formats/charts/fill/sort; `omni_common::image` sniffs PNG/JPEG/GIF sizes without decoding.

@@ -10,9 +10,10 @@ const ORANGE: u32 = 0xC55A11;
 struct Cmd { id: &'static str, label: &'static str, icon: &'static str, tab: &'static str, group: &'static str }
 const fn c(id: &'static str, label: &'static str, icon: &'static str, tab: &'static str, group: &'static str) -> Cmd { Cmd { id, label, icon, tab, group } }
 const TABS: [&str; 7] = ["File", "Home", "Insert", "Design", "Transitions", "Slide Show", "View"];
+const SHAPE_TAB: &str = "Shape Format";
 const CMDS: &[Cmd] = &[
     c("file.new", "New", "note_add", "File", "File"), c("file.open", "Open", "folder_open", "File", "File"), c("file.save", "Save", "save", "File", "File"),
-    c("file.saveas", "Save As", "save_as", "File", "File"), c("file.import", "Import Outline", "import", "File", "Import"),
+    c("file.saveas", "Save As", "save_as", "File", "File"), c("file.import", "Import Outline", "import", "File", "Import"), c("file.exportpng", "Export PNG", "export_png", "File", "Export"),
     c("edit.undo", "Undo", "undo", "Home", "Undo"), c("edit.redo", "Redo", "redo", "Home", "Undo"),
     c("slide.new", "New Slide", "add_slide", "Home", "Slides"), c("slide.dup", "Duplicate", "content_copy", "Home", "Slides"), c("slide.del", "Delete", "delete", "Home", "Slides"),
     c("slide.up", "Move Up", "arrow_up", "Home", "Slides"), c("slide.down", "Move Down", "arrow_down", "Home", "Slides"),
@@ -20,11 +21,15 @@ const CMDS: &[Cmd] = &[
     c("layout.section", "Section", "layout_section", "Home", "Layout"), c("layout.blank", "Blank", "layout_blank", "Home", "Layout"),
     c("shape.textbox", "Text Box", "textbox", "Insert", "Shapes"), c("shape.rect", "Rectangle", "rect", "Insert", "Shapes"),
     c("shape.ellipse", "Ellipse", "ellipse", "Insert", "Shapes"), c("shape.line", "Line", "line", "Insert", "Shapes"),
+    c("shape.image", "Picture", "image", "Insert", "Illustrations"), c("insert.numbers", "Slide Number", "slide_no", "Insert", "Header & Footer"),
+    c("sf.theme", "Theme", "fill", SHAPE_TAB, "Fill"), c("sf.red", "Red", "fill", SHAPE_TAB, "Fill"), c("sf.blue", "Blue", "fill", SHAPE_TAB, "Fill"), c("sf.green", "Green", "fill", SHAPE_TAB, "Fill"), c("sf.gold", "Gold", "fill", SHAPE_TAB, "Fill"), c("sf.gray", "Gray", "fill", SHAPE_TAB, "Fill"),
+    c("sf.front", "Bring Forward", "front", SHAPE_TAB, "Arrange"), c("sf.back", "Send Backward", "back", SHAPE_TAB, "Arrange"), c("sf.dup", "Duplicate", "content_copy", SHAPE_TAB, "Arrange"), c("sf.del", "Delete", "delete", SHAPE_TAB, "Arrange"),
+    c("sf.left", "Left", "align_l", SHAPE_TAB, "Align"), c("sf.center", "Center", "align_c", SHAPE_TAB, "Align"), c("sf.right", "Right", "align_r", SHAPE_TAB, "Align"),
     c("theme.office", "Office", "palette", "Design", "Themes"), c("theme.ocean", "Ocean", "palette", "Design", "Themes"), c("theme.forest", "Forest", "palette", "Design", "Themes"),
     c("theme.sunset", "Sunset", "palette", "Design", "Themes"), c("theme.mono", "Mono Dark", "palette", "Design", "Themes"),
     c("tr.none", "None", "none", "Transitions", "Transition to This Slide"), c("tr.fade", "Fade", "fade", "Transitions", "Transition to This Slide"),
     c("tr.push", "Push", "push", "Transitions", "Transition to This Slide"), c("tr.wipe", "Wipe", "wipe", "Transitions", "Transition to This Slide"), c("tr.all", "Apply To All", "copy_all", "Transitions", "Timing"),
-    c("show.begin", "From Beginning", "present_all", "Slide Show", "Start Slide Show"), c("show.current", "From Current Slide", "from_current", "Slide Show", "Start Slide Show"),
+    c("show.begin", "From Beginning", "present_all", "Slide Show", "Start Slide Show"), c("show.current", "From Current Slide", "from_current", "Slide Show", "Start Slide Show"), c("show.presenter", "Presenter View", "presenter", "Slide Show", "Start Slide Show"),
     c("view.normal", "Normal", "slides", "View", "Presentation Views"), c("view.sorter", "Slide Sorter", "grid", "View", "Presentation Views"),
     c("view.notes", "Notes", "notes", "View", "Show"), c("view.ribbon", "Collapse Ribbon", "collapse", "View", "Show"),
     c("zoom.in", "Zoom In", "zoom_in", "View", "Zoom"), c("zoom.out", "Zoom Out", "zoom_out", "View", "Zoom"), c("zoom.fit", "Fit", "fit", "View", "Zoom"),
@@ -40,7 +45,7 @@ struct Show {
     deck: Deck, path: Option<PathBuf>, cur: usize, focus: Field, mode: Mode, dirty: bool, toast: String, quit: bool, hover: (f32, f32), size: (f32, f32),
     hot: Vec<(Rect, String)>, fields: Vec<(Rect, Field)>, thumbs: Vec<Rect>, canvas: Rect, tab: &'static str, collapsed: bool, rscroll: f32, rwidth: f32, notes: bool, zoom: f32, tscroll: f32,
     undo: Vec<Deck>, redo: Vec<Deck>, typing: Option<(usize, Field)>, qat: Vec<String>, qat_menu: Option<f32>, ctx: Option<(f32, f32, Option<String>)>, palette: Option<(String, usize)>,
-    sel: Option<usize>, drag: Option<(usize, f32, f32)>, anim: Option<(Instant, usize)>, last_click: (Instant, usize),
+    sel: Option<usize>, drag: Option<(usize, f32, f32)>, anim: Option<(Instant, usize)>, last_click: (Instant, usize), presenter: bool, started: Instant, prev_sel: Option<usize>, drag_pending: bool,
 }
 impl Show {
     fn new() -> Self {
@@ -48,7 +53,7 @@ impl Show {
         if qat.is_empty() { qat = ["file.save", "edit.undo", "edit.redo", "show.begin"].map(String::from).to_vec(); }
         Show { deck: Deck::default(), path: None, cur: 0, focus: Field::Title, mode: Mode::Normal, dirty: false, toast: String::new(), quit: false, hover: (0., 0.), size: (1180., 760.), hot: vec![], fields: vec![], thumbs: vec![],
             canvas: Rect::new(0., 0., 1., 1.), tab: "Home", collapsed: false, rscroll: 0., rwidth: 0., notes: true, zoom: 1.0, tscroll: 0., undo: vec![], redo: vec![], typing: None, qat, qat_menu: None, ctx: None, palette: None,
-            sel: None, drag: None, anim: None, last_click: (Instant::now(), usize::MAX) }
+            sel: None, drag: None, anim: None, last_click: (Instant::now(), usize::MAX), presenter: false, started: Instant::now(), prev_sel: None, drag_pending: false }
     }
     fn snap(&mut self) { self.undo.push(self.deck.clone()); if self.undo.len() > 200 { self.undo.remove(0); } self.redo.clear(); self.dirty = true; self.typing = None; }
     fn name(&self) -> String { self.path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Untitled").to_string() }
@@ -88,7 +93,7 @@ impl Show {
     }
     fn add_shape(&mut self, k: ShapeKind) { self.snap(); let mut s = Shape::new(k); if k == ShapeKind::Line { s.h = 0.; s.w = 0.3; } let sl = self.slide(); sl.shapes.push(s); let i = sl.shapes.len() - 1; self.sel = Some(i); self.focus = Field::Shape(i); }
     fn run(&mut self, id: &str) {
-        if let Some(t) = id.strip_prefix("tab:") { if let Some(t) = TABS.iter().find(|x| **x == t) { self.tab = t; } return; }
+        if let Some(t) = id.strip_prefix("tab:") { if let Some(t) = TABS.iter().chain([SHAPE_TAB].iter()).find(|x| **x == t) { self.tab = t; } return; }
         let n = self.deck.slides.len();
         match id {
             "file.new" => { self.deck = Deck::default(); self.path = None; self.cur = 0; self.dirty = false; self.undo.clear(); self.redo.clear(); }
@@ -101,15 +106,42 @@ impl Show {
             "slide.up" => if self.cur > 0 { self.snap(); self.cur = self.deck.move_slide(self.cur, true); }, "slide.down" => if self.cur + 1 < n { self.snap(); self.cur = self.deck.move_slide(self.cur, false); },
             "shape.textbox" => self.add_shape(ShapeKind::TextBox), "shape.rect" => self.add_shape(ShapeKind::Rect), "shape.ellipse" => self.add_shape(ShapeKind::Ellipse), "shape.line" => self.add_shape(ShapeKind::Line),
             "tr.all" => { self.snap(); let t = self.deck.slides[self.cur].transition; for s in &mut self.deck.slides { s.transition = t; } }
-            "show.begin" => { self.cur = 0; self.anim = None; self.mode = Mode::Present; } "show.current" => { self.anim = None; self.mode = Mode::Present; }
+            "show.begin" => { self.cur = 0; self.anim = None; self.presenter = false; self.mode = Mode::Present; } "show.current" => { self.anim = None; self.presenter = false; self.mode = Mode::Present; }
+            "show.presenter" => { self.anim = None; self.presenter = true; self.started = Instant::now(); self.mode = Mode::Present; }
+            "file.exportpng" => self.export_png(), "shape.image" => self.add_picture(), "insert.numbers" => { self.snap(); self.deck.numbers = !self.deck.numbers; }
             "view.normal" => self.mode = Mode::Normal, "view.sorter" => self.mode = Mode::Sorter, "view.notes" => self.notes = !self.notes, "view.ribbon" => self.collapsed = !self.collapsed,
             "zoom.in" => self.zoom = (self.zoom + 0.1).min(1.0), "zoom.out" => self.zoom = (self.zoom - 0.1).max(0.4), "zoom.fit" => self.zoom = 1.0,
             "palette.open" => self.palette = Some((String::new(), 0)), "qat.menu" => self.qat_menu = Some(self.hover.0),
             _ => {
-                if let Some(l) = id.strip_prefix("layout.").and_then(Layout::parse) { self.snap(); self.slide().layout = l; }
+                if let Some(x) = id.strip_prefix("sf.") { self.shape_cmd(x); }
+                else if let Some(l) = id.strip_prefix("layout.").and_then(Layout::parse) { self.snap(); self.slide().layout = l; }
                 else if let Some(t) = id.strip_prefix("theme.").and_then(Theme::parse) { self.snap(); self.deck.theme = t; }
                 else if let Some(t) = id.strip_prefix("tr.").and_then(Transition::parse) { self.snap(); self.slide().transition = t; }
             }
+        }
+    }
+    fn add_picture(&mut self) {
+        let Some(p) = rfd::FileDialog::new().add_filter("Pictures", &["png", "jpg", "jpeg", "gif"]).pick_file() else { return };
+        match std::fs::read(&p).ok().and_then(Shape::picture) {
+            Some(sh) => { self.snap(); let sl = self.slide(); sl.shapes.push(sh); let i = sl.shapes.len() - 1; self.sel = Some(i); self.focus = Field::Shape(i); }
+            None => self.toast = "Unsupported image (PNG, JPEG and GIF are supported)".into(),
+        }
+    }
+    fn export_png(&mut self) {
+        let Some(dir) = rfd::FileDialog::new().pick_folder() else { return };
+        let mut n = 0; for i in 0..self.deck.slides.len() { if let Some(b) = render_png(&self.deck, i, 1920) { if std::fs::write(dir.join(format!("slide-{:02}.png", i + 1)), b).is_ok() { n += 1; } } }
+        self.toast = format!("Exported {n} slide images");
+    }
+    /// Commands of the contextual "Shape Format" tab, applied to the selected shape.
+    fn shape_cmd(&mut self, x: &str) {
+        let Some(i) = self.sel else { return }; if i >= self.slide().shapes.len() { return; } self.snap();
+        match x {
+            "theme" | "red" | "blue" | "green" | "gold" | "gray" => { self.slide().shapes[i].color = match x { "red" => Some(0xC0392B), "blue" => Some(0x1F6FB2), "green" => Some(0x2E7D32), "gold" => Some(0xE0A800), "gray" => Some(0x6B7280), _ => None }; }
+            "front" | "back" => { let n = self.slide().restack(i, x == "front"); self.sel = Some(n); self.focus = Field::Shape(n); }
+            "dup" => { let mut sh = self.slide().shapes[i].clone(); sh.x = (sh.x + 0.03).min(1. - sh.w); sh.y = (sh.y + 0.03).min(1. - sh.h); let sl = self.slide(); sl.shapes.push(sh); let n = sl.shapes.len() - 1; self.sel = Some(n); self.focus = Field::Shape(n); }
+            "del" => { self.slide().shapes.remove(i); self.sel = None; self.focus = Field::Title; }
+            "left" | "center" | "right" => { let sh = &mut self.slide().shapes[i]; sh.x = match x { "left" => 0.02, "center" => (1. - sh.w) / 2., _ => 1. - sh.w - 0.02 }; }
+            _ => {}
         }
     }
     fn set_qat(&mut self, id: &str, on: bool) {
@@ -125,10 +157,11 @@ impl Show {
         if let Some(t) = id.strip_prefix("theme.") { return Theme::parse(t) == Some(self.deck.theme); }
         if let Some(t) = id.strip_prefix("tr.") { return Transition::parse(t) == Some(s.transition) && id != "tr.all"; }
         if let Some(t) = id.strip_prefix("layout.") { return Layout::parse(t) == Some(s.layout); }
-        match id { "view.normal" => self.mode == Mode::Normal, "view.sorter" => self.mode == Mode::Sorter, "view.notes" => self.notes, "view.ribbon" => self.collapsed, _ => false }
+        match id { "view.normal" => self.mode == Mode::Normal, "view.sorter" => self.mode == Mode::Sorter, "view.notes" => self.notes, "view.ribbon" => self.collapsed, "insert.numbers" => self.deck.numbers, _ => false }
     }
     fn tabs(&self) -> Vec<Tab> {
-        TABS.iter().map(|t| { let mut groups: Vec<Group> = vec![];
+        let mut names: Vec<&'static str> = TABS.to_vec(); if self.sel.is_some() { names.push(SHAPE_TAB); }
+        names.iter().map(|t| { let mut groups: Vec<Group> = vec![];
             for cm in CMDS.iter().filter(|c| c.tab == *t) {
                 if groups.last().map_or(true, |g| g.name != cm.group) { groups.push(Group { name: cm.group, btns: vec![] }); }
                 groups.last_mut().unwrap().btns.push(Btn { id: cm.id.into(), label: cm.label.into(), icon: cm.icon, on: self.is_on(cm.id), enabled: self.enabled(cm.id) });
@@ -136,64 +169,93 @@ impl Show {
             Tab { name: t, groups } }).collect()
     }
     // ---------- drawing ----------
-    fn draw_slide(&self, c: &Canvas, s: &Slide, r: Rect, edit: bool) {
-        let tc = self.deck.theme.colors(); let k = r.width() / 960.; let (w, h) = (r.width(), r.height());
-        let caret = |f: Field| if edit && self.focus == f { "|" } else { "" };
-        fill(c, r, if s.layout == Layout::Section { tc.accent } else { tc.bg }); if edit || self.mode == Mode::Sorter { stroke(c, r, 0xC9CED6, 1.); }
-        c.save(); c.clip_rect(r, None, false);
-        match s.layout {
-            Layout::Content => {
-                fill(c, Rect::new(r.left, r.top, r.left + 14. * k, r.bottom), tc.accent);
-                text(c, &format!("{}{}", s.title, caret(Field::Title)), r.left + 60. * k, r.top + 110. * k, 44. * k, true, tc.title);
-                for (i, b) in s.bullets.iter().enumerate() { text(c, &format!("\u{2022}  {}{}", b, caret(Field::Bullet(i))), r.left + 70. * k, r.top + (210. + i as f32 * 62.) * k, 30. * k, false, tc.text); }
-            }
-            Layout::Title => {
-                let t = format!("{}{}", s.title, caret(Field::Title)); text(c, &t, r.left + (w - measure(&t, 56. * k, true)) / 2., r.top + h * 0.48, 56. * k, true, tc.title);
-                fill(c, Rect::new(r.left + w * 0.35, r.top + h * 0.53, r.left + w * 0.65, r.top + h * 0.53 + 4. * k), tc.accent);
-                for (i, b) in s.bullets.iter().enumerate() { let t = format!("{}{}", b, caret(Field::Bullet(i))); text(c, &t, r.left + (w - measure(&t, 28. * k, false)) / 2., r.top + h * 0.53 + (50. + i as f32 * 44.) * k, 28. * k, false, tc.text); }
-            }
-            Layout::Section => {
-                text(c, &format!("{}{}", s.title, caret(Field::Title)), r.left + 70. * k, r.top + h * 0.55, 60. * k, true, 0xFFFFFF);
-                for (i, b) in s.bullets.iter().enumerate() { text(c, &format!("{}{}", b, caret(Field::Bullet(i))), r.left + 74. * k, r.top + h * 0.55 + (50. + i as f32 * 40.) * k, 26. * k, false, 0xFFE9D6); }
-            }
-            Layout::Blank => {}
-        }
-        for (i, sh) in s.shapes.iter().enumerate() {
-            let sr = Rect::new(r.left + sh.x * w, r.top + sh.y * h, r.left + (sh.x + sh.w) * w, r.top + (sh.y + sh.h) * h);
-            let on_acc = if self.deck.theme == Theme::Mono { 0x1E1F22 } else { 0xFFFFFF };
-            let t = format!("{}{}", sh.text, caret(Field::Shape(i)));
-            match sh.kind {
-                ShapeKind::Rect => { rrect(c, sr, 6. * k, tc.accent); text(c, &t, sr.left + (sr.width() - measure(&t, 24. * k, false)) / 2., sr.top + sr.height() / 2. + 8. * k, 24. * k, false, on_acc); }
-                ShapeKind::Ellipse => { oval(c, sr, tc.accent); text(c, &t, sr.left + (sr.width() - measure(&t, 24. * k, false)) / 2., sr.top + sr.height() / 2. + 8. * k, 24. * k, false, on_acc); }
-                ShapeKind::TextBox => text(c, &t, sr.left + 8. * k, sr.top + 30. * k, 28. * k, false, tc.text),
-                ShapeKind::Line => line(c, (sr.left, sr.top), (sr.right, sr.bottom), tc.accent, (4. * k).max(1.5)),
-            }
-            if edit && self.sel == Some(i) { stroke(c, sr.with_outset((3., 3.)), 0x2B7FFF, 2.); for (hx, hy) in [(sr.left, sr.top), (sr.right, sr.top), (sr.left, sr.bottom), (sr.right, sr.bottom)] { fill(c, Rect::new(hx - 4., hy - 4., hx + 4., hy + 4.), 0x2B7FFF); } }
-        }
-        c.restore();
+    fn draw_slide(&self, c: &Canvas, s: &Slide, r: Rect, idx: usize, edit: bool) {
+        paint_slide(c, &View { deck: &self.deck, idx, edit, focus: self.focus, sel: self.sel, border: edit || self.mode == Mode::Sorter }, s, r);
     }
     fn draw_present(&self, c: &Canvas, w: f32, h: f32) -> bool {
         fill(c, Rect::new(0., 0., w, h), 0x000000);
         let (sw, sh) = if w / h > 16. / 9. { (h * 16. / 9., h) } else { (w, w * 9. / 16.) };
         let r = Rect::new((w - sw) / 2., (h - sh) / 2., (w + sw) / 2., (h + sh) / 2.); let cur = &self.deck.slides[self.cur];
-        let Some((t0, prev)) = self.anim else { self.draw_slide(c, cur, r, false); return false };
-        let t = (t0.elapsed().as_secs_f32() / 0.45).min(1.0); let prev = &self.deck.slides[prev.min(self.deck.slides.len() - 1)];
+        let Some((t0, pi)) = self.anim else { self.draw_slide(c, cur, r, self.cur, false); return false };
+        let t = (t0.elapsed().as_secs_f32() / 0.45).min(1.0); let pi = pi.min(self.deck.slides.len() - 1); let prev = &self.deck.slides[pi];
         match cur.transition {
-            Transition::Fade => { self.draw_slide(c, prev, r, false); c.save_layer_alpha_f(r, t); self.draw_slide(c, cur, r, false); c.restore(); }
-            Transition::Push => { for (s, dx) in [(prev, -t * sw), (cur, sw - t * sw)] { c.save(); c.clip_rect(r, None, false); c.translate((dx, 0.)); self.draw_slide(c, s, r, false); c.restore(); } }
-            Transition::Wipe => { self.draw_slide(c, prev, r, false); c.save(); c.clip_rect(Rect::new(r.left, r.top, r.left + t * sw, r.bottom), None, false); self.draw_slide(c, cur, r, false); c.restore(); }
-            Transition::None => self.draw_slide(c, cur, r, false),
+            Transition::Fade => { self.draw_slide(c, prev, r, pi, false); c.save_layer_alpha_f(r, t); self.draw_slide(c, cur, r, self.cur, false); c.restore(); }
+            Transition::Push => { for (s, i, dx) in [(prev, pi, -t * sw), (cur, self.cur, sw - t * sw)] { c.save(); c.clip_rect(r, None, false); c.translate((dx, 0.)); self.draw_slide(c, s, r, i, false); c.restore(); } }
+            Transition::Wipe => { self.draw_slide(c, prev, r, pi, false); c.save(); c.clip_rect(Rect::new(r.left, r.top, r.left + t * sw, r.bottom), None, false); self.draw_slide(c, cur, r, self.cur, false); c.restore(); }
+            Transition::None => self.draw_slide(c, cur, r, self.cur, false),
         }
         t < 1.0
     }
+    /// Presenter view: current slide, next slide, notes and a timer.
+    fn draw_presenter(&self, c: &Canvas, w: f32, h: f32) {
+        fill(c, Rect::new(0., 0., w, h), 0x1B1C1F); let n = self.deck.slides.len(); let lw = w * 0.62 - 30.;
+        let cr = Rect::new(20., 40., 20. + lw, 40. + lw * 9. / 16.); self.draw_slide(c, &self.deck.slides[self.cur], cr, self.cur, false);
+        text(c, &format!("Slide {} of {}", self.cur + 1, n), 20., 28., 14., true, 0xFFFFFF);
+        let el = self.started.elapsed().as_secs(); text(c, &format!("{:02}:{:02}:{:02}", el / 3600, el / 60 % 60, el % 60), w - 150., 36., 24., true, 0xFFB400);
+        let rx = w * 0.62 + 10.; let rw = w - rx - 20.; text(c, "Next", rx, 28., 14., true, 0xAAAAAA);
+        if self.cur + 1 < n { let nr = Rect::new(rx, 40., rx + rw, 40. + rw * 9. / 16.); self.draw_slide(c, &self.deck.slides[self.cur + 1], nr, self.cur + 1, false); } else { text(c, "End of presentation", rx, 70., 16., false, 0xCCCCCC); }
+        let ny = 60. + rw * 9. / 16.; text(c, "Notes", rx, ny + 10., 14., true, 0xAAAAAA);
+        for (i, l) in self.deck.slides[self.cur].notes.lines().take(12).enumerate() { text(c, l, rx, ny + 36. + i as f32 * 24., 16., false, 0xEEEEEE); }
+        text(c, "Right/Space: next   Left: previous   Esc: exit", 20., h - 16., 12., false, 0x888888);
+    }
+}
+struct View<'a> { deck: &'a Deck, idx: usize, edit: bool, focus: Field, sel: Option<usize>, border: bool }
+/// Paint one slide into `r` (used for the editor, thumbnails, slideshow and PNG export).
+fn paint_slide(c: &Canvas, v: &View, s: &Slide, r: Rect) {
+    let tc = v.deck.theme.colors(); let k = r.width() / 960.; let (w, h) = (r.width(), r.height());
+    let caret = |f: Field| if v.edit && v.focus == f { "|" } else { "" };
+    fill(c, r, if s.layout == Layout::Section { tc.accent } else { tc.bg }); if v.border { stroke(c, r, 0xC9CED6, 1.); }
+    c.save(); c.clip_rect(r, None, false);
+    match s.layout {
+        Layout::Content => {
+            fill(c, Rect::new(r.left, r.top, r.left + 14. * k, r.bottom), tc.accent);
+            text(c, &format!("{}{}", s.title, caret(Field::Title)), r.left + 60. * k, r.top + 110. * k, 44. * k, true, tc.title);
+            for (i, b) in s.bullets.iter().enumerate() { text(c, &format!("\u{2022}  {}{}", b, caret(Field::Bullet(i))), r.left + 70. * k, r.top + (210. + i as f32 * 62.) * k, 30. * k, false, tc.text); }
+        }
+        Layout::Title => {
+            let t = format!("{}{}", s.title, caret(Field::Title)); text(c, &t, r.left + (w - measure(&t, 56. * k, true)) / 2., r.top + h * 0.48, 56. * k, true, tc.title);
+            fill(c, Rect::new(r.left + w * 0.35, r.top + h * 0.53, r.left + w * 0.65, r.top + h * 0.53 + 4. * k), tc.accent);
+            for (i, b) in s.bullets.iter().enumerate() { let t = format!("{}{}", b, caret(Field::Bullet(i))); text(c, &t, r.left + (w - measure(&t, 28. * k, false)) / 2., r.top + h * 0.53 + (50. + i as f32 * 44.) * k, 28. * k, false, tc.text); }
+        }
+        Layout::Section => {
+            text(c, &format!("{}{}", s.title, caret(Field::Title)), r.left + 70. * k, r.top + h * 0.55, 60. * k, true, 0xFFFFFF);
+            for (i, b) in s.bullets.iter().enumerate() { text(c, &format!("{}{}", b, caret(Field::Bullet(i))), r.left + 74. * k, r.top + h * 0.55 + (50. + i as f32 * 40.) * k, 26. * k, false, 0xFFE9D6); }
+        }
+        Layout::Blank => {}
+    }
+    for (i, sh) in s.shapes.iter().enumerate() {
+        let sr = Rect::new(r.left + sh.x * w, r.top + sh.y * h, r.left + (sh.x + sh.w) * w, r.top + (sh.y + sh.h) * h);
+        let fillc = sh.color.unwrap_or(tc.accent); let on_fill = if sh.color.is_none() && v.deck.theme == Theme::Mono { 0x1E1F22 } else { 0xFFFFFF };
+        let t = format!("{}{}", sh.text, caret(Field::Shape(i)));
+        match sh.kind {
+            ShapeKind::Rect => { rrect(c, sr, 6. * k, fillc); text(c, &t, sr.left + (sr.width() - measure(&t, 24. * k, false)) / 2., sr.top + sr.height() / 2. + 8. * k, 24. * k, false, on_fill); }
+            ShapeKind::Ellipse => { oval(c, sr, fillc); text(c, &t, sr.left + (sr.width() - measure(&t, 24. * k, false)) / 2., sr.top + sr.height() / 2. + 8. * k, 24. * k, false, on_fill); }
+            ShapeKind::TextBox => text(c, &t, sr.left + 8. * k, sr.top + 30. * k, 28. * k, false, sh.color.unwrap_or(tc.text)),
+            ShapeKind::Line => line(c, (sr.left, sr.top), (sr.right, sr.bottom), fillc, (4. * k).max(1.5)),
+            ShapeKind::Image => if let Some(d) = &sh.image { draw_image(c, d, sr); } else { stroke(c, sr, 0x999999, 1.); },
+        }
+        if v.edit && v.sel == Some(i) { stroke(c, sr.with_outset((3., 3.)), 0x2B7FFF, 2.); for (hx, hy) in [(sr.left, sr.top), (sr.right, sr.top), (sr.left, sr.bottom), (sr.right, sr.bottom)] { fill(c, Rect::new(hx - 4., hy - 4., hx + 4., hy + 4.), 0x2B7FFF); } }
+    }
+    if v.deck.numbers { let n = (v.idx + 1).to_string(); text(c, &n, r.right - 40. * k - measure(&n, 20. * k, false), r.bottom - 24. * k, 20. * k, false, if s.layout == Layout::Section { 0xFFFFFF } else { tc.text }); }
+    c.restore();
+}
+/// Render slide `idx` of the deck as a PNG of the given width (16:9).
+fn render_png(deck: &Deck, idx: usize, width: i32) -> Option<Vec<u8>> {
+    let (w, h) = (width, width * 9 / 16); let mut surf = skia_safe::surfaces::raster_n32_premul((w, h))?;
+    paint_slide(surf.canvas(), &View { deck, idx, edit: false, focus: Field::Title, sel: None, border: false }, deck.slides.get(idx)?, Rect::new(0., 0., w as f32, h as f32));
+    surf.image_snapshot().encode(None, skia_safe::EncodedImageFormat::PNG, None).map(|d| d.as_bytes().to_vec())
 }
 impl App for Show {
     fn title(&self) -> String { format!("{}{} - OmniShow {}", self.name(), if self.dirty { " *" } else { "" }, omni_common::BUILD_ID) }
     fn wants_quit(&self) -> bool { self.quit }
+    fn tick(&mut self) -> bool { self.mode == Mode::Present && self.presenter }
+    fn tick_interval(&self) -> Duration { if self.mode == Mode::Present && self.presenter { Duration::from_secs(1) } else { Duration::from_secs(30) } }
     fn animating(&self) -> bool { self.mode == Mode::Present && self.anim.map_or(false, |a| a.0.elapsed() < Duration::from_millis(450)) }
     fn draw(&mut self, c: &Canvas, w: f32, h: f32) {
         self.size = (w, h); self.hot.clear(); self.fields.clear(); self.thumbs.clear();
-        if self.mode == Mode::Present { if !self.draw_present(c, w, h) { self.anim = None; } return; }
+        if self.sel.is_none() && self.tab == SHAPE_TAB { self.tab = "Home"; }
+        if self.sel.is_some() && self.prev_sel.is_none() { self.tab = SHAPE_TAB; } self.prev_sel = self.sel;
+        if self.mode == Mode::Present { if self.presenter { self.draw_presenter(c, w, h); } else if !self.draw_present(c, w, h) { self.anim = None; } return; }
         fill(c, Rect::new(0., 0., w, h), 0xE9ECF1);
         // title bar: logo, quick access toolbar, file name, search
         fill(c, Rect::new(0., 0., w, 36.), ORANGE); text(c, "OmniShow", 12., 23., 13., true, 0xFFFFFF);
@@ -215,14 +277,14 @@ impl App for Show {
                 for (i, s) in self.deck.slides.clone().iter().enumerate() {
                     let y = top + 12. - self.tscroll + i as f32 * 118.; let r = Rect::new(26., y, 196., y + 95.6);
                     if y > h || y + 100. < top { self.thumbs.push(Rect::new(0., 0., 0., 0.)); continue; }
-                    self.draw_slide(c, s, r, false); text(c, &(i + 1).to_string(), 6., y + 14., 12., true, 0x555555);
+                    self.draw_slide(c, s, r, i, false); text(c, &(i + 1).to_string(), 6., y + 14., 12., true, 0x555555);
                     if i == self.cur { stroke(c, r.with_outset((3., 3.)), ORANGE, 3.); } self.thumbs.push(r);
                 }
                 c.restore();
                 let area = Rect::new(230., top + 14., w - 20., h - status_h - notes_h - 14.);
                 let sw = (area.width().min(area.height() * 16. / 9.) * self.zoom).max(80.); let sh = sw * 9. / 16.;
                 self.canvas = Rect::new(area.left + (area.width() - sw) / 2., area.top + (area.height() - sh) / 2., area.left + (area.width() + sw) / 2., area.top + (area.height() + sh) / 2.);
-                let s = self.deck.slides[self.cur].clone(); self.draw_slide(c, &s, self.canvas, true);
+                let s = self.deck.slides[self.cur].clone(); self.draw_slide(c, &s, self.canvas, self.cur, true);
                 let (r, k) = (self.canvas, self.canvas.width() / 960.);
                 self.fields.push((Rect::new(r.left, r.top + 50. * k, r.right, r.top + 130. * k), Field::Title));
                 for i in 0..=s.bullets.len() { self.fields.push((Rect::new(r.left, r.top + (170. + i as f32 * 62.) * k, r.right, r.top + (225. + i as f32 * 62.) * k), Field::Bullet(i))); }
@@ -237,7 +299,7 @@ impl App for Show {
                 let cols = (((w - 40.) / 230.) as usize).max(1);
                 for (i, s) in self.deck.slides.clone().iter().enumerate() {
                     let (cx, cy) = ((i % cols) as f32, (i / cols) as f32); let r = Rect::new(30. + cx * 230., top + 24. + cy * 150. - self.tscroll, 30. + cx * 230. + 200., top + 24. + cy * 150. - self.tscroll + 112.5);
-                    self.draw_slide(c, s, r, false); text(c, &(i + 1).to_string(), r.left, r.bottom + 16., 12., true, 0x555555); if i == self.cur { stroke(c, r.with_outset((3., 3.)), ORANGE, 3.); } self.thumbs.push(r);
+                    self.draw_slide(c, s, r, i, false); text(c, &(i + 1).to_string(), r.left, r.bottom + 16., 12., true, 0x555555); if i == self.cur { stroke(c, r.with_outset((3., 3.)), ORANGE, 3.); } self.thumbs.push(r);
                 }
             }
         }
@@ -317,10 +379,11 @@ impl App for Show {
     fn text(&mut self, s: &str) { if self.mode != Mode::Present { if let Some((q, _)) = self.palette.as_mut() { q.push_str(s); } else { self.type_text(s); } } }
     fn moved(&mut self, x: f32, y: f32) {
         self.hover = (x, y);
+        if self.drag.is_some() && self.drag_pending { self.snap(); self.drag_pending = false; }
         if let Some((i, ox, oy)) = self.drag { let r = self.canvas; let (fx, fy) = ((x - r.left) / r.width(), (y - r.top) / r.height());
             if let Some(sh) = self.slide().shapes.get_mut(i) { sh.x = (fx - ox).clamp(0., 1. - sh.w); sh.y = (fy - oy).clamp(0., 1. - sh.h); self.dirty = true; } }
     }
-    fn mouse_up(&mut self) { self.drag = None; }
+    fn mouse_up(&mut self) { self.drag = None; self.drag_pending = false; }
     fn wheel(&mut self, dy: f32) {
         if self.hover.1 < 36. + ribbon::TAB_H + ribbon::BODY_H && self.hover.1 > 36. { let max = (self.rwidth - self.size.0 + 20.).max(0.); self.rscroll = (self.rscroll - dy * 30.).clamp(0., max); }
         else { self.tscroll = (self.tscroll - dy * 30.).max(0.); }
@@ -350,7 +413,7 @@ impl App for Show {
             let r = self.canvas; let (fx, fy) = ((x - r.left) / r.width(), (y - r.top) / r.height());
             let n = self.slide().shapes.len();
             if let Some(i) = (0..n).rev().find(|&i| { let s = &self.deck.slides[self.cur].shapes[i]; fx >= s.x - 0.02 && fx <= s.x + s.w + 0.02 && fy >= s.y - 0.02 && fy <= s.y + s.h + 0.02 }) {
-                self.snap(); self.sel = Some(i); self.focus = Field::Shape(i); let s = &self.deck.slides[self.cur].shapes[i]; self.drag = Some((i, fx - s.x, fy - s.y)); return;
+                self.drag_pending = true; self.sel = Some(i); self.focus = Field::Shape(i); let s = &self.deck.slides[self.cur].shapes[i]; self.drag = Some((i, fx - s.x, fy - s.y)); return;
             }
             self.sel = None;
         }
@@ -365,5 +428,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests { use super::*;
     #[test] fn all_command_icons_exist() { for c in CMDS { assert!(has_icon(c.icon), "{} -> {}", c.id, c.icon); } for i in ["check", "dropdown", "search"] { assert!(has_icon(i)); } for q in QAT_OPTIONS { assert!(cmd(q).is_some()); } }
-    #[test] fn every_tab_has_commands() { for t in TABS { assert!(CMDS.iter().any(|c| c.tab == t), "{t}"); } }
+    #[test] fn every_tab_has_commands() { for t in TABS.iter().chain([SHAPE_TAB].iter()) { assert!(CMDS.iter().any(|c| c.tab == *t), "{t}"); } }
+    #[test] fn png_export_renders_a_slide() {
+        if skia_safe::FontMgr::default().count_families() == 0 { return; } // no system fonts on this machine
+        let mut d = Deck::default(); d.slides[0].shapes.push(Shape::new(ShapeKind::Ellipse)); d.numbers = true;
+        let b = render_png(&d, 0, 320).expect("png"); assert_eq!(omni_common::image::size(&b), Some((320, 180))); assert!(b.len() > 200);
+    }
 }

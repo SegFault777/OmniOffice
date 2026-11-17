@@ -9,19 +9,30 @@ impl Style {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Align { #[default] Left, Center, Right, Justify }
 
+/// A formatted piece of text. `size` is in points (None = style default), `color` is 0xRRGGBB (None = automatic).
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
-pub struct Run { pub text: String, pub bold: bool, pub italic: bool, pub underline: bool }
+pub struct Run { pub text: String, pub bold: bool, pub italic: bool, pub underline: bool, pub strike: bool, pub size: Option<u8>, pub color: Option<u32> }
 impl Run {
-    pub fn fmt_eq(&self, o: &Run) -> bool { self.bold == o.bold && self.italic == o.italic && self.underline == o.underline }
+    pub fn fmt_eq(&self, o: &Run) -> bool { self.bold == o.bold && self.italic == o.italic && self.underline == o.underline && self.strike == o.strike && self.size == o.size && self.color == o.color }
     pub fn plain(t: &str) -> Run { Run { text: t.into(), ..Default::default() } }
 }
+/// An embedded picture (PNG/JPEG/GIF bytes) with its pixel size.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Image { pub data: std::sync::Arc<Vec<u8>>, pub w: u32, pub h: u32, pub alt: String }
+/// A paragraph. A table row is a paragraph with `table = true` whose cells are separated by '\t'; an image paragraph has `image` set.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
-pub struct Para { pub style: Style, pub align: Align, pub runs: Vec<Run> }
+pub struct Para { pub style: Style, pub align: Align, pub runs: Vec<Run>, pub table: bool, pub image: Option<Image> }
 impl Para {
     pub fn plain(t: &str) -> Para { Para { runs: vec![Run::plain(t)], ..Default::default() } }
     pub fn text(&self) -> String { self.runs.iter().map(|r| r.text.as_str()).collect() }
     pub fn len(&self) -> usize { self.runs.iter().map(|r| r.text.chars().count()).sum() }
     pub fn is_empty(&self) -> bool { self.len() == 0 }
+    /// Split a table row into its cells (cells are separated by '\t').
+    pub fn cells(&self) -> Vec<Vec<Run>> {
+        let mut out: Vec<Vec<Run>> = vec![vec![]];
+        for r in &self.runs { for (i, part) in r.text.split('\t').enumerate() { if i > 0 { out.push(vec![]); } if !part.is_empty() { out.last_mut().unwrap().push(Run { text: part.into(), ..r.clone() }); } } }
+        out
+    }
     /// Merge neighbouring runs with equal formatting and drop empty ones.
     pub fn normalize(&mut self) {
         let mut out: Vec<Run> = Vec::new();

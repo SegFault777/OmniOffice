@@ -14,6 +14,12 @@ pub const COMMANDS: &[Command] = &[
     c("edit.sort", "Sort A-Z", "Home", "Paragraph", ""), c("edit.sortdesc", "Sort Z-A", "Home", "Paragraph", ""), c("view.marks", "Show Marks", "Home", "Paragraph", "Ctrl+Shift+*"),
     c("tools.stats", "Statistics", "Review", "Proofing", "Ctrl+Shift+G"), c("tools.autocorrect", "AutoCorrect", "Review", "Proofing", ""), c("tools.complete", "Word Completion", "Review", "Proofing", ""),
     c("find.regex", "Regex Find", "Review", "Find", "Alt+R"),
+    c("font.bigger", "Grow Font", "Home", "Font", "Ctrl+Shift+."), c("font.smaller", "Shrink Font", "Home", "Font", "Ctrl+Shift+,"), c("fmt.strike", "Strikethrough", "Home", "Font", ""),
+    c("color.red", "Red", "Home", "Color", ""), c("color.blue", "Blue", "Home", "Color", ""), c("color.green", "Green", "Home", "Color", ""), c("color.auto", "Automatic", "Home", "Color", ""),
+    c("list.bullet", "Bullets", "Home", "Paragraph", "Ctrl+Shift+L"), c("list.number", "Numbering", "Home", "Paragraph", ""), c("indent.more", "Indent", "Home", "Paragraph", ""), c("indent.less", "Outdent", "Home", "Paragraph", ""),
+    c("table.2x2", "Table 2x2", "Insert", "Tables", ""), c("table.3x3", "Table 3x3", "Insert", "Tables", ""), c("table.4x4", "Table 4x4", "Insert", "Tables", ""),
+    c("table.addrow", "Add Row", "Insert", "Table Edit", ""), c("table.delrow", "Delete Row", "Insert", "Table Edit", ""), c("table.addcol", "Add Column", "Insert", "Table Edit", ""), c("table.delcol", "Delete Column", "Insert", "Table Edit", ""),
+    c("image.insert", "Picture", "Insert", "Illustrations", ""), c("spell.toggle", "Spelling", "Review", "Proofing", "F7"),
     c("fmt.bold", "Bold", "Home", "Font", "Ctrl+B"), c("fmt.italic", "Italic", "Home", "Font", "Ctrl+I"),
     c("fmt.underline", "Underline", "Home", "Font", "Ctrl+U"),
     c("align.left", "Align Left", "Home", "Paragraph", "Ctrl+L"), c("align.center", "Center", "Home", "Paragraph", "Ctrl+E"),
@@ -40,6 +46,11 @@ pub fn search(q: &str) -> Vec<&'static Command> {
 /// Execute an editing command. Returns false for UI-level commands (file.*, view.*, find.*).
 pub fn exec(e: &mut Editor, id: &str) -> bool {
     match id {
+        "font.bigger" => e.change_size(1), "font.smaller" => e.change_size(-1), "fmt.strike" => e.toggle(Fmt::Strike),
+        "color.red" => e.set_color(Some(0xC00000)), "color.blue" => e.set_color(Some(0x1F4E9E)), "color.green" => e.set_color(Some(0x2E7D32)), "color.auto" => e.set_color(None),
+        "list.bullet" => e.toggle_list(true), "list.number" => e.toggle_list(false), "indent.more" => e.indent(1), "indent.less" => e.indent(-1),
+        "table.2x2" => e.insert_table(2, 2), "table.3x3" => e.insert_table(3, 3), "table.4x4" => e.insert_table(4, 4),
+        "table.addrow" => e.table_add_row(), "table.delrow" => e.table_del_row(), "table.addcol" => e.table_add_col(), "table.delcol" => e.table_del_col(),
         "fmt.painter" => match e.painter.take() { Some(p) => e.paint_format(&p), None => e.painter = Some(e.copy_format()) },
         "case.upper" => e.change_case(Case::Upper), "case.lower" => e.change_case(Case::Lower), "case.title" => e.change_case(Case::Title), "case.sentence" => e.change_case(Case::Sentence),
         "edit.sort" => e.sort_paras(false), "edit.sortdesc" => e.sort_paras(true),
@@ -72,7 +83,9 @@ pub fn icon(id: &str) -> &'static str {
         "case.upper" => "uppercase", "case.lower" => "lowercase", "case.title" => "title_case", "case.sentence" => "sentence_case",
         "edit.sort" => "sort_az", "edit.sortdesc" => "sort_za", "view.marks" => "paragraph", "tools.stats" => "stats",
         "tools.autocorrect" => "autocorrect", "tools.complete" => "complete", "find.regex" => "regex", "find.open" => "find",
-        "edit.selectall" => "select_all", "view.outline" => "nav_pane", "view.focus" => "focus", "view.dark" => "dark",
+        "edit.selectall" => "select_all", "font.bigger" => "font_up", "font.smaller" => "font_down", "fmt.strike" => "strike", "color.red" | "color.blue" | "color.green" | "color.auto" => "text_color",
+        "list.bullet" => "list_bullet", "list.number" => "list_num", "indent.more" => "indent_more", "indent.less" => "indent_less", "table.2x2" | "table.3x3" | "table.4x4" => "table",
+        "table.addrow" => "row_add", "table.delrow" => "row_del", "table.addcol" => "col_add", "table.delcol" => "col_del", "image.insert" => "image", "spell.toggle" => "spell", "view.outline" => "nav_pane", "view.focus" => "focus", "view.dark" => "dark",
         "view.zoomin" => "zoom_in", "view.zoomout" => "zoom_out", "view.ribbon" => "collapse", "palette.open" => "search",
         _ => "",
     }

@@ -40,7 +40,7 @@ pub fn read_doc(d: &[u8]) -> Result<Doc, String> {
 }
 /// Word text stream -> paragraphs. \r ends a paragraph, 0x07 ends a table cell (twice = row), 0x13/0x14/0x15 delimit fields.
 pub fn text_to_doc(text: &str) -> Doc {
-    let (mut paras, mut cur, mut fields) = (Vec::new(), String::new(), Vec::<bool>::new());
+    let (mut paras, mut cur, mut fields, mut cells) = (Vec::new(), String::new(), Vec::<bool>::new(), Vec::<String>::new());
     let ch: Vec<char> = text.chars().collect(); let mut i = 0;
     while i < ch.len() {
         let c = ch[i]; i += 1; let instr = fields.iter().any(|x| *x);
@@ -48,8 +48,10 @@ pub fn text_to_doc(text: &str) -> Doc {
             '\u{13}' => fields.push(true), '\u{14}' => if let Some(l) = fields.last_mut() { *l = false },
             '\u{15}' => { fields.pop(); }
             _ if instr => {}
-            '\r' => paras.push(Para::plain(&std::mem::take(&mut cur))),
-            '\u{7}' => if ch.get(i) == Some(&'\u{7}') { i += 1; paras.push(Para::plain(&std::mem::take(&mut cur))); } else { cur.push_str("    "); },
+            '\r' => { if !cells.is_empty() { cells.clear(); } paras.push(Para::plain(&std::mem::take(&mut cur))) }
+            '\u{7}' => if ch.get(i) == Some(&'\u{7}') { // end of row: cell mark + row mark
+                i += 1; cells.push(std::mem::take(&mut cur)); let mut p = Para::plain(&cells.join("\t")); p.table = true; cells.clear(); paras.push(p);
+            } else { cells.push(std::mem::take(&mut cur)); },
             '\u{b}' => cur.push(' '), '\u{1e}' => cur.push('-'), c if c < ' ' && c != '\t' => {}, c => cur.push(c),
         }
     }

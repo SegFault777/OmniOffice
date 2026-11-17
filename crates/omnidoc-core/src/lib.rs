@@ -7,5 +7,6 @@ pub mod edit;
 pub mod formats;
 pub mod legacy;
 pub mod model;
+pub mod spell;
 pub use omni_common::{cfb, xml, zipio};
 pub use omni_common::BUILD_ID as VERSION;

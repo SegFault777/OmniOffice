@@ -25,9 +25,16 @@ macOS and Windows targets are now cross-checked from Linux before release.
 - OmniCel: undo/redo, range selection, cut/copy/paste (tab-separated, works with other spreadsheets), icon toolbar.
 - OmniDoc: page guides and "Page n of m".
 
+## 202647a (0.5.0)
+- OmniDoc: tables (insert, Tab navigation, add/delete rows and columns; DOCX/ODT/Markdown/OMD/DOC), pictures (DOCX/OMD), font size, text colour,
+  strikethrough, bullets/numbering, indent, spell check with a user-supplied word list (squiggles, suggestions, add to dictionary), Shift+Enter replace.
+- OmniShow: pictures, contextual "Shape Format" tab (fill colours, stacking, duplicate, align), slide numbers, presenter view with timer and notes, PNG export.
+- OmniCel: ribbon, cell formats (bold, alignment, number formats, fill, font colour), column/line/pie charts, fill down/right with reference adjustment,
+  AutoSum, sort, 11 more functions, absolute references, selection statistics. OMC v2 stores formats and charts.
+
 ## Still not done
-HWPX export, PDF import, real pagination (page breaks that split paragraphs), images, tables as a model element, spell check,
-OmniCel charts and cell formatting, OmniShow images and PPTX export, accessibility bridge, Windows/macOS runtime testing.
+HWPX export (cannot be validated without Hancom software), PDF import, real pagination (page breaks that split paragraphs), a bundled spell-check dictionary,
+OmniShow PPTX export (cannot be validated without PowerPoint), headers/footers, accessibility bridge, Windows/macOS runtime testing.
 
 ## Next
 - Compile and test on Windows and macOS (CI builds them; only Linux was run during development).
